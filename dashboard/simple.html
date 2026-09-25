@@ -64,6 +64,7 @@ th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
 .type select { height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; cursor: pointer; }
 thead th { background: var(--surface-2); font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
 tbody td:last-child { font-weight: 600; }
+.net { color: var(--ink-2); white-space: nowrap; }
 tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid var(--line-strong); }
 .num { color: var(--muted); width: 1%; white-space: nowrap; }
 .amount { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
@@ -100,9 +101,9 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     <h2>Total revenue by app</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">#</th><th>App</th><th class="type">Type</th><th>Total revenue</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>App</th><th class="type">Type</th><th>Total revenue</th><th>After 10% deduction</th></tr></thead>
         <tbody id="rows"></tbody>
-        <tfoot><tr><td></td><td>All apps</td><td></td><td id="footTotal"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>All apps</td><td></td><td id="footTotal"></td><td id="footNet"></td></tr></tfoot>
       </table>
     </div>
   </section>
@@ -141,8 +142,13 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
       class="${edited ? 'edited' : ''}" value="${plain(valueFor(app))}" aria-label="Total revenue for ${esc(app)}"
       title="${edited ? `Edited. Value in the file: ${money(fileTotals.get(app) || 0)}. Clear the box to restore it.` : 'Click to edit'}"></span>`;
   }
+  // Revenue minus 10%. Read-only: always worked out from the total revenue box.
+  const DEDUCTION = 0.10;
+  const net = (n) => n * (1 - DEDUCTION);
   function updateFooter() {
-    $('footTotal').textContent = money(RA.sum([...fileTotals.keys()].map(valueFor)));
+    const total = RA.sum([...fileTotals.keys()].map(valueFor));
+    $('footTotal').textContent = money(total);
+    $('footNet').textContent = money(net(total));
   }
 
   function typeSelect(app, i) {
@@ -169,7 +175,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     fileTotals = new Map(m.apps.map((a) => [a.name, a.total]));
     $('fileName').textContent = name;
     $('rows').innerHTML = m.apps.map((a, i) =>
-      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${amountInput(a.name, i)}</td></tr>`).join('');
+      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${amountInput(a.name, i)}</td><td class="net" id="net-${i}">${money(net(valueFor(a.name)))}</td></tr>`).join('');
     updateFooter();
     show('');
     $('tablePanel').hidden = false;
@@ -180,6 +186,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     edits = {}; saveEdits(); fileTotals = new Map();
     $('rows').innerHTML = '';
     $('footTotal').textContent = '';
+    $('footNet').textContent = '';
     $('tablePanel').hidden = true;
     $('clearAll').hidden = true;
     $('fileName').textContent = 'No file loaded';
@@ -200,6 +207,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     else if (v !== null) edits[app] = v;
     box.classList.toggle('edited', Number.isFinite(edits[app]));
     saveEdits();
+    box.closest('tr').querySelector('.net').textContent = money(net(valueFor(app)));
     updateFooter();
   });
   // Tidy the box when leaving it: an empty box goes back to the file's value.
@@ -208,6 +216,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     if (!box.matches('input[data-app]')) return;
     box.classList.remove('invalid');
     box.value = plain(valueFor(box.dataset.app));
+    box.closest('tr').querySelector('.net').textContent = money(net(valueFor(box.dataset.app)));
   });
 
   $('fileInput').addEventListener('change', (e) => {
