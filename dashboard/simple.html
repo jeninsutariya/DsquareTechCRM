@@ -156,9 +156,9 @@ th.right, td.right { text-align: right; }
     <h2>Google AdMob</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">#</th><th>Account name</th><th class="type">Type</th><th class="right">Revenue</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th></tr></thead>
         <tbody id="admobRows"></tbody>
-        <tfoot><tr><td></td><td>All accounts</td><td></td><td class="right" id="admobTotal"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td></tr></tfoot>
       </table>
     </div>
   </section>
@@ -325,29 +325,17 @@ th.right, td.right { text-align: right; }
   // Kept separate from the Excel data, so Upload Excel and Clear all leave it alone.
   const ADMOB_ACCOUNTS = ['Aneri Beladiya', 'Ashokbhai Bhikadiya', 'Keyur Bhikadiya', 'Meet Vaghasiya', 'Devkurben Sutariya', 'Jenin Sutariya'];
   const ADMOB_KEY = 'appRevenue.admob';
-  const ADMOB_TYPE_KEY = 'appRevenue.admobTypes';
-  let admobTypes = {};
-  try { admobTypes = JSON.parse(localStorage.getItem(ADMOB_TYPE_KEY)) || {}; } catch (e) { admobTypes = {}; }
-  const saveAdmobTypes = () => { try { localStorage.setItem(ADMOB_TYPE_KEY, JSON.stringify(admobTypes)); } catch (e) { /* storage unavailable */ } };
-  function admobTypeSelect(account, i) {
-    const cur = TYPES.includes(admobTypes[account]) ? admobTypes[account] : TYPES[0];
-    return `<select id="admob-type-${i}" data-account="${esc(account)}" aria-label="Type for ${esc(account)}">` +
-      TYPES.map((t) => `<option${t === cur ? ' selected' : ''}>${t}</option>`).join('') + '</select>';
-  }
   let admob = {};
   try { admob = JSON.parse(localStorage.getItem(ADMOB_KEY)) || {}; } catch (e) { admob = {}; }
   const saveAdmob = () => { try { localStorage.setItem(ADMOB_KEY, JSON.stringify(admob)); } catch (e) { /* storage unavailable */ } };
   function updateAdmobTotal() {
     $('admobTotal').textContent = money(RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admob[a] || '') || 0)));
   }
-  $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td><td class="type">${admobTypeSelect(a, i)}</td>
+  $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>
     <td class="right"><span class="amount">$<input id="admob-${i}" data-account="${esc(a)}" inputmode="decimal" autocomplete="off" placeholder="0.00"
       class="${(admob[a] || '').trim() && RA.parseAmount(admob[a]) === null ? 'invalid' : ''}"
       value="${esc(admob[a] || '')}" aria-label="Revenue for ${esc(a)}"></span></td></tr>`).join('');
   updateAdmobTotal();
-  $('admobRows').addEventListener('change', (e) => {
-    if (e.target.matches('select[data-account]')) { admobTypes[e.target.dataset.account] = e.target.value; saveAdmobTypes(); }
-  });
   $('admobRows').addEventListener('input', (e) => {
     const box = e.target;
     if (!box.matches('input[data-account]')) return;
