@@ -105,6 +105,32 @@ th.right, td.right { text-align: right; }
 .result.diff { background: var(--surface); border-color: var(--line-strong); }
 @media (max-width: 1100px) { .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .result-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt { display: grid; gap: 16px; }
+.mkt > h2 { font-size: clamp(17px, 1.5vw, 22px); }
+.mkt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px clamp(16px, 2vw, 24px); }
+.mkt-head h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: clamp(16px, 1.3vw, 19px); }
+.btn.small { height: 34px; padding: 0 12px; font: inherit; font-weight: 600; font-size: 14px; border: 0; }
+.mkt table th:not(:first-child), .mkt table td:not(:first-child) { text-align: right; }
+.mkt table th:first-child, .mkt table td:first-child { text-align: left; }
+.mkt .empty-row td { color: var(--muted); text-align: left !important; font-size: 14px; }
+.row-del { background: none; border: 0; padding: 2px 6px; margin-left: 6px; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; border-radius: 6px; }
+.row-del:hover { color: var(--bad); background: var(--surface-2); }
+.modal-back { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(15, 27, 45, 0.45); }
+.modal { width: min(440px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); color: var(--ink); border-radius: 14px;
+  border: 1px solid var(--line); box-shadow: 0 20px 50px rgba(15, 27, 45, 0.25); padding: 22px; display: grid; gap: 14px; }
+.modal h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: 19px; }
+.modal label { display: grid; gap: 6px; }
+.modal label > span:first-child { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.modal input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; }
+.modal .inr input { padding-left: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.modal input.invalid { border-color: var(--bad); }
+.modal-total { display: flex; justify-content: space-between; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; font-weight: 600; }
+.modal-error { color: var(--bad); font-size: 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal-actions .btn { border: 0; font: inherit; font-weight: 600; }
+.modal-actions .btn.secondary { border: 1px solid var(--line-strong); }
 .msg { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 12px; padding: 24px; color: var(--ink-2); }
 .msg.error { color: var(--bad); border-color: var(--bad); }
 </style>
@@ -177,6 +203,25 @@ th.right, td.right { text-align: right; }
       </div>
     </div>
   </section>
+
+  <section class="mkt" id="marketing" aria-labelledby="mktTitle">
+    <h2 id="mktTitle">Marketing</h2>
+    <div class="mkt-grid" id="mktGrid"></div>
+  </section>
+</div>
+
+<div class="modal-back" id="mktModal" hidden>
+  <form class="modal" id="mktForm" role="dialog" aria-modal="true" aria-labelledby="mktModalTitle" novalidate>
+    <h3 id="mktModalTitle">Add marketing</h3>
+    <label for="mktApp"><span>App name</span><input id="mktApp" autocomplete="off" placeholder="e.g. EMI Loan Calculator"></label>
+    <div id="mktPeople" style="display:grid;gap:14px"></div>
+    <div class="modal-total"><span>App total marketing</span><span id="mktModalTotal">₹0.00</span></div>
+    <p class="modal-error" id="mktError" hidden></p>
+    <div class="modal-actions">
+      <button type="button" class="btn secondary" id="mktCancel">Cancel</button>
+      <button type="submit" class="btn" id="mktDone">Done</button>
+    </div>
+  </form>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -335,6 +380,96 @@ th.right, td.right { text-align: right; }
     $('fileName').textContent = 'No file loaded';
     show('Cleared. Upload an Excel file to see the total revenue for every app.');
   }
+
+  // Marketing: two departments. Each Add opens a popup for an app name and each person's marketing (INR);
+  // Done adds the app as a row with its total. Rows are remembered in this browser.
+  const DEPTS = [
+    { name: 'Company', people: ['Jenin', 'Meet', 'Keyur'] },
+    { name: 'Personal', people: ['Jenin', 'Meet'] },
+  ];
+  const MKT_KEY = 'appRevenue.marketing';
+  let mkt = {};
+  try { mkt = JSON.parse(localStorage.getItem(MKT_KEY)) || {}; } catch (e) { mkt = {}; }
+  DEPTS.forEach((d) => { if (!Array.isArray(mkt[d.name])) mkt[d.name] = []; });
+  const saveMkt = () => { try { localStorage.setItem(MKT_KEY, JSON.stringify(mkt)); } catch (e) { /* storage unavailable */ } };
+  const rowTotal = (row, dept) => paise(RA.sum(dept.people.map((p) => row.amounts[p] || 0)));
+
+  function renderMarketing() {
+    $('mktGrid').innerHTML = DEPTS.map((d, di) => {
+      const rows = mkt[d.name];
+      const body = rows.length ? rows.map((r, ri) => `<tr><td>${esc(r.app)}</td>${d.people.map((p) => `<td>${inr(r.amounts[p] || 0)}</td>`).join('')}
+        <td><strong>${inr(rowTotal(r, d))}</strong><button type="button" class="row-del" data-dept="${di}" data-row="${ri}" aria-label="Remove ${esc(r.app)}" title="Remove">×</button></td></tr>`).join('')
+        : `<tr class="empty-row"><td colspan="${d.people.length + 2}">No apps yet. Click Add to enter an app's marketing.</td></tr>`;
+      const colTotals = d.people.map((p) => inr(paise(RA.sum(rows.map((r) => r.amounts[p] || 0)))));
+      return `<div class="panel">
+        <div class="mkt-head"><h3>${d.name}</h3><button type="button" class="btn small" data-add="${di}">+ Add</button></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>App name</th>${d.people.map((p) => `<th>${p}</th>`).join('')}<th>Total</th></tr></thead>
+          <tbody>${body}</tbody>
+          <tfoot><tr><td>${d.name} total</td>${colTotals.map((t) => `<td>${t}</td>`).join('')}<td>${inr(paise(RA.sum(rows.map((r) => rowTotal(r, d)))))}</td></tr></tfoot>
+        </table></div>
+      </div>`;
+    }).join('');
+  }
+
+  let mktDept = 0, mktOpener = null;
+  function openMkt(di, opener) {
+    mktDept = di; mktOpener = opener;
+    const d = DEPTS[di];
+    $('mktModalTitle').textContent = `Add ${d.name} marketing`;
+    $('mktApp').value = '';
+    $('mktPeople').innerHTML = d.people.map((p, pi) => `<label for="mkt-p-${pi}"><span>${p}</span><span class="inr"><input id="mkt-p-${pi}" data-person="${p}" inputmode="decimal" autocomplete="off" placeholder="0.00"></span></label>`).join('');
+    $('mktError').hidden = true;
+    $('mktApp').classList.remove('invalid');
+    updateMktModalTotal();
+    $('mktModal').hidden = false;
+    $('mktApp').focus();
+  }
+  function closeMkt() {
+    $('mktModal').hidden = true;
+    if (mktOpener) mktOpener.focus();
+  }
+  function updateMktModalTotal() {
+    const vals = [...$('mktPeople').querySelectorAll('input')].map((i) => RA.parseAmount(i.value) || 0);
+    $('mktModalTotal').textContent = inr(paise(RA.sum(vals)));
+  }
+  $('mktPeople').addEventListener('input', (e) => {
+    e.target.classList.toggle('invalid', e.target.value.trim() !== '' && RA.parseAmount(e.target.value) === null);
+    updateMktModalTotal();
+  });
+  $('mktGrid').addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (add) { openMkt(Number(add.dataset.add), add); return; }
+    const del = e.target.closest('.row-del');
+    if (del) {
+      mkt[DEPTS[Number(del.dataset.dept)].name].splice(Number(del.dataset.row), 1);
+      saveMkt(); renderMarketing();
+    }
+  });
+  $('mktForm').addEventListener('input', () => { $('mktError').hidden = true; $('mktApp').classList.remove('invalid'); });
+  $('mktCancel').addEventListener('click', closeMkt);
+  $('mktModal').addEventListener('click', (e) => { if (e.target === $('mktModal')) closeMkt(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('mktModal').hidden) closeMkt(); });
+  $('mktForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const app = $('mktApp').value.trim();
+    const inputs = [...$('mktPeople').querySelectorAll('input')];
+    const bad = inputs.filter((i) => i.value.trim() !== '' && RA.parseAmount(i.value) === null);
+    let error = '';
+    if (!app) error = 'Enter the app name.';
+    else if (bad.length) error = 'Amounts must be numbers. Fix the boxes marked in red.';
+    $('mktApp').classList.toggle('invalid', !app);
+    $('mktError').textContent = error;
+    $('mktError').hidden = !error;
+    if (error) { (app ? bad[0] : $('mktApp')).focus(); return; }
+    const amounts = {};
+    inputs.forEach((i) => { amounts[i.dataset.person] = paise(RA.parseAmount(i.value) || 0); });
+    mkt[DEPTS[mktDept].name].push({ app, amounts });
+    saveMkt();
+    renderMarketing();
+    closeMkt();
+  });
+  renderMarketing();
 
   // Google AdMob accounts: amounts typed per account, remembered in this browser.
   // Kept separate from the Excel data, so Upload Excel and Clear all leave it alone.
