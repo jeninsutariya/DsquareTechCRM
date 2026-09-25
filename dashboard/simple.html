@@ -91,6 +91,16 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
 @media (max-width: 1100px) { .extras { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 800px) { .extras { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .extras { grid-template-columns: minmax(0, 1fr); } }
+.results { display: grid; gap: 12px; padding: 20px clamp(16px, 2vw, 28px) 24px; border-top: 1px solid var(--line); }
+.results h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: clamp(16px, 1.3vw, 19px); }
+.result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.result { display: grid; gap: 4px; padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.result span { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.result strong { font-size: clamp(18px, 1.6vw, 24px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.result small { color: var(--muted); font-size: 12.5px; }
+.result.diff { background: var(--surface); border-color: var(--line-strong); }
+@media (max-width: 1100px) { .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .result-grid { grid-template-columns: minmax(0, 1fr); } }
 .msg { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 12px; padding: 24px; color: var(--ink-2); }
 .msg.error { color: var(--bad); border-color: var(--bad); }
 </style>
@@ -129,6 +139,15 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
       <label for="tds"><span>TDS</span><span class="inr"><input id="tds" inputmode="decimal" autocomplete="off"></span></label>
       <label for="netInr"><span>Net Amount (INR)</span><span class="inr"><input id="netInr" readonly tabindex="-1" title="All apps: INR − invalid traffic share − TDS share"></span></label>
       <label for="bankAmount"><span>Bank Amount</span><span class="inr"><input id="bankAmount" inputmode="decimal" autocomplete="off"></span></label>
+    </div>
+    <div class="results" id="results">
+      <h3>Result</h3>
+      <div class="result-grid">
+        <div class="result"><span>Company apps total</span><strong id="resCompany">—</strong><small id="resCompanyN"></small></div>
+        <div class="result"><span>Personal apps total</span><strong id="resPersonal">—</strong><small id="resPersonalN"></small></div>
+        <div class="result"><span>Other apps total</span><strong id="resOther">—</strong><small id="resOtherN"></small></div>
+        <div class="result diff"><span>Net Amount − Bank Amount</span><strong id="resDiff">—</strong><small id="resDiffNote"></small></div>
+      </div>
     </div>
   </section>
 </div>
@@ -178,7 +197,8 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
   }
   // Uses the rounded dollar figure shown in the After 10% deduction column, so it matches a calculator.
   // Uses the rounded dollar figure shown in the After 10% deduction column, so it matches a calculator.
-  const inrAmount = (usd, rate) => (rate === null ? null : Math.round(net(usd) * 100) / 100 * rate);
+  const paise = (n) => Math.round(n * 100) / 100;
+  const inrAmount = (usd, rate) => (rate === null ? null : paise(paise(net(usd)) * rate));
 
   // Amounts from the boxes under the table that are split across apps by revenue:
   // app share = app revenue ÷ total revenue of all apps × the box's amount.
@@ -190,29 +210,56 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
   const inrOrDash = (n) => (n === null ? '—' : inr(n));
 
   // Net Amount (INR) = INR − invalid traffic share − TDS share. An empty deduction box counts as 0.
-  const netInr = (inrValue, shares) => (inrValue === null ? null : inrValue - RA.sum(shares.map((v) => v || 0)));
+  const netInr = (inrValue, shares) => (inrValue === null ? null : paise(inrValue - RA.sum(shares.map((v) => paise(v || 0)))));
 
   function updateFooter() {
     const rate = usdRate();
     const total = RA.sum([...fileTotals.keys()].map(valueFor));
     const amounts = SPLITS.map((sp) => RA.parseAmount($(sp.box).value));
+    // Result totals: each app's Net Amount (INR) added up by the Type chosen for it.
+    const byType = Object.fromEntries(TYPES.map((t) => [t, { sum: [], apps: 0 }]));
+    // All-apps INR and Net Amount are the sums of the app rows, so every total agrees with the rows above it.
+    const rowInr = [], rowNet = [];
     document.querySelectorAll('#rows tr[data-app]').forEach((tr) => {
       const usd = valueFor(tr.dataset.app);
       const inrValue = inrAmount(usd, rate);
       const shares = amounts.map((amount) => share(usd, total, amount));
       tr.querySelector('td.inr-cell').textContent = inrOrDash(inrValue);
       SPLITS.forEach((sp, i) => { tr.querySelector(`td.${sp.cell}`).textContent = inrOrDash(shares[i]); });
-      tr.querySelector('td.netinr-cell').textContent = inrOrDash(netInr(inrValue, shares));
+      const appNet = netInr(inrValue, shares);
+      if (inrValue !== null) { rowInr.push(inrValue); rowNet.push(appNet); }
+      tr.querySelector('td.netinr-cell').textContent = inrOrDash(appNet);
+      const bucket = byType[tr.querySelector('select[data-app]').value] || byType[TYPES[0]];
+      bucket.apps++;
+      if (appNet !== null) bucket.sum.push(appNet);
     });
-    const totalInr = inrAmount(total, rate);
+    const totalInr = rate === null ? null : paise(RA.sum(rowInr));
     const totalShares = amounts.map((amount) => (amount === null ? null : total > 0 ? amount : 0));
     SPLITS.forEach((sp, i) => { $(sp.foot).textContent = inrOrDash(totalShares[i]); });
-    const totalNet = netInr(totalInr, totalShares);
+    const totalNet = rate === null ? null : paise(RA.sum(rowNet));
     $('footTotal').textContent = money(total);
     $('footNet').textContent = money(net(total));
     $('footInr').textContent = inrOrDash(totalInr);
     $('footNetInr').textContent = inrOrDash(totalNet);
     $('netInr').value = totalNet === null ? '' : inr(totalNet).replace('₹', '');
+    renderResults(byType, rate !== null, totalNet);
+  }
+
+  function renderResults(byType, hasRate, totalNet) {
+    [['Company', 'resCompany'], ['Personal', 'resPersonal'], ['Other', 'resOther']].forEach(([type, id]) => {
+      const b = byType[type];
+      $(id).textContent = hasRate ? inr(paise(RA.sum(b.sum))) : '—';
+      $(id + 'N').textContent = `${b.apps} app${b.apps === 1 ? '' : 's'}`;
+    });
+    const bank = RA.parseAmount($('bankAmount').value);
+    if (totalNet === null || bank === null) {
+      $('resDiff').textContent = '—';
+      $('resDiffNote').textContent = totalNet === null ? 'Enter the USD Rate' : 'Enter the Bank Amount';
+    } else {
+      const diff = paise(totalNet - bank);
+      $('resDiff').textContent = inr(diff);
+      $('resDiffNote').textContent = Math.abs(diff) < 0.005 ? 'Matches the bank' : diff > 0 ? 'Bank received less than Net Amount' : 'Bank received more than Net Amount';
+    }
   }
 
   function typeSelect(app, i) {
@@ -274,12 +321,12 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     if (!EXTRA_IDS.includes(e.target.id)) return;
     extras[e.target.id] = e.target.value;
     saveExtras();
-    if (['usdRate', 'invalidTraffic', 'tds'].includes(e.target.id)) updateFooter();
+    if (['usdRate', 'invalidTraffic', 'tds', 'bankAmount'].includes(e.target.id)) updateFooter();
   });
 
   $('clearAll').addEventListener('click', clearAll);
   $('rows').addEventListener('change', (e) => {
-    if (e.target.matches('select[data-app]')) { types[e.target.dataset.app] = e.target.value; saveTypes(); }
+    if (e.target.matches('select[data-app]')) { types[e.target.dataset.app] = e.target.value; saveTypes(); updateFooter(); }
   });
   $('rows').addEventListener('input', (e) => {
     const box = e.target;
