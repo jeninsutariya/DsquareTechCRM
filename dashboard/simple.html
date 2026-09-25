@@ -146,7 +146,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
         <div class="result"><span>Company apps total</span><strong id="resCompany">—</strong><small id="resCompanyN"></small></div>
         <div class="result"><span>Personal apps total</span><strong id="resPersonal">—</strong><small id="resPersonalN"></small></div>
         <div class="result"><span>Other apps total</span><strong id="resOther">—</strong><small id="resOtherN"></small></div>
-        <div class="result diff"><span>Net Amount − Bank Amount</span><strong id="resDiff">—</strong><small id="resDiffNote"></small></div>
+        <div class="result diff"><span>Bank Amount − Net Amount</span><strong id="resDiff">—</strong><small id="resDiffNote"></small></div>
       </div>
     </div>
   </section>
@@ -256,9 +256,9 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
       $('resDiff').textContent = '—';
       $('resDiffNote').textContent = totalNet === null ? 'Enter the USD Rate' : 'Enter the Bank Amount';
     } else {
-      const diff = paise(totalNet - bank);
+      const diff = paise(bank - totalNet);
       $('resDiff').textContent = inr(diff);
-      $('resDiffNote').textContent = Math.abs(diff) < 0.005 ? 'Matches the bank' : diff > 0 ? 'Bank received less than Net Amount' : 'Bank received more than Net Amount';
+      $('resDiffNote').textContent = Math.abs(diff) < 0.005 ? 'Matches the bank' : diff > 0 ? 'Bank received more than Net Amount' : 'Bank received less than Net Amount';
     }
   }
 
