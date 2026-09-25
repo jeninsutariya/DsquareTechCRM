@@ -57,19 +57,21 @@ h1 { font-size: clamp(26px, 2.6vw, 36px); }
 .panel h2 { font-size: clamp(17px, 1.5vw, 22px); padding: 20px clamp(16px, 2vw, 28px) 14px; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { padding: clamp(11px, 1.1vw, 16px) clamp(16px, 2vw, 28px); text-align: right; border-top: 1px solid var(--line); }
-tbody td, tfoot td { font-size: clamp(15px, 1.2vw, 18px); }
+th, td { padding: clamp(10px, 1vw, 14px) clamp(8px, 0.9vw, 16px); text-align: right; border-top: 1px solid var(--line); }
+th:first-child, td:first-child { padding-left: clamp(16px, 2vw, 28px); }
+th:last-child, td:last-child { padding-right: clamp(16px, 2vw, 28px); }
+tbody td, tfoot td { font-size: clamp(14px, 1vw, 16px); white-space: nowrap; }
 th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
 .type { width: 1%; white-space: nowrap; }
 tbody td:nth-child(2), tfoot td:nth-child(2) { white-space: nowrap; }
 .type select { height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; cursor: pointer; }
-thead th { background: var(--surface-2); font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+thead th { background: var(--surface-2); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
 tbody td:last-child { font-weight: 600; }
 .net { color: var(--ink-2); white-space: nowrap; }
 tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid var(--line-strong); }
 .num { color: var(--muted); width: 1%; white-space: nowrap; }
 .amount { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
-.amount input { width: 11ch; height: 36px; padding: 0 10px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px;
+.amount input { width: 10ch; height: 36px; padding: 0 10px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px;
   background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; }
 .amount input:hover { border-color: var(--accent); }
 .amount input.edited { background: var(--surface-2); border-color: var(--accent); }
@@ -81,6 +83,8 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
 .extras input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px;
   background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .extras input:hover { border-color: var(--accent); }
+.extras input[readonly] { background: var(--surface-2); border-style: dashed; cursor: default; }
+.extras input[readonly]:hover { border-color: var(--line-strong); }
 .inr { position: relative; display: block; }
 .inr::before { content: "₹"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-2); font-weight: 600; font-size: 16px; pointer-events: none; }
 .inr input { padding-left: 28px; }
@@ -113,16 +117,16 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     <h2>Total revenue by app</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">#</th><th>App</th><th class="type">Type</th><th>Total revenue</th><th>After 10% deduction</th><th>After 10% deduction (INR)</th><th>Invalid traffic share (INR)</th><th>TDS share (INR)</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>App</th><th class="type">Type</th><th>Total revenue</th><th>After 10% deduction</th><th>After 10% deduction (INR)</th><th>Invalid traffic share (INR)</th><th>TDS share (INR)</th><th>Net Amount (INR)</th></tr></thead>
         <tbody id="rows"></tbody>
-        <tfoot><tr><td></td><td>All apps</td><td></td><td id="footTotal"></td><td id="footNet"></td><td id="footInr"></td><td id="footIvt"></td><td id="footTds"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>All apps</td><td></td><td id="footTotal"></td><td id="footNet"></td><td id="footInr"></td><td id="footIvt"></td><td id="footTds"></td><td id="footNetInr"></td></tr></tfoot>
       </table>
     </div>
     <div class="extras" id="extras">
       <label for="usdRate"><span>USD Rate</span><span class="inr"><input id="usdRate" inputmode="decimal" autocomplete="off"></span></label>
       <label for="invalidTraffic"><span>Other/AdX Invalid Traffic</span><span class="inr"><input id="invalidTraffic" inputmode="decimal" autocomplete="off"></span></label>
       <label for="tds"><span>TDS</span><span class="inr"><input id="tds" inputmode="decimal" autocomplete="off"></span></label>
-      <label for="netInr"><span>Net Amount (INR)</span><span class="inr"><input id="netInr" inputmode="decimal" autocomplete="off"></span></label>
+      <label for="netInr"><span>Net Amount (INR)</span><span class="inr"><input id="netInr" readonly tabindex="-1" title="All apps: INR − invalid traffic share − TDS share"></span></label>
     </div>
   </section>
 </div>
@@ -171,7 +175,8 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     return v !== null && v > 0 ? v : null;
   }
   // Uses the rounded dollar figure shown in the After 10% deduction column, so it matches a calculator.
-  const inrText = (usd, rate) => (rate === null ? '—' : inr(Math.round(net(usd) * 100) / 100 * rate));
+  // Uses the rounded dollar figure shown in the After 10% deduction column, so it matches a calculator.
+  const inrAmount = (usd, rate) => (rate === null ? null : Math.round(net(usd) * 100) / 100 * rate);
 
   // Amounts from the boxes under the table that are split across apps by revenue:
   // app share = app revenue ÷ total revenue of all apps × the box's amount.
@@ -179,20 +184,33 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     { box: 'invalidTraffic', cell: 'ivt-cell', foot: 'footIvt' },
     { box: 'tds', cell: 'tds-cell', foot: 'footTds' },
   ];
-  const splitText = (usd, total, amount) => (amount === null ? '—' : inr(total > 0 ? (usd / total) * amount : 0));
+  const share = (usd, total, amount) => (amount === null ? null : total > 0 ? (usd / total) * amount : 0);
+  const inrOrDash = (n) => (n === null ? '—' : inr(n));
+
+  // Net Amount (INR) = INR − invalid traffic share − TDS share. An empty deduction box counts as 0.
+  const netInr = (inrValue, shares) => (inrValue === null ? null : inrValue - RA.sum(shares.map((v) => v || 0)));
 
   function updateFooter() {
     const rate = usdRate();
     const total = RA.sum([...fileTotals.keys()].map(valueFor));
-    document.querySelectorAll('#rows td.inr-cell').forEach((td) => { td.textContent = inrText(valueFor(td.dataset.app), rate); });
-    for (const sp of SPLITS) {
-      const amount = RA.parseAmount($(sp.box).value);
-      document.querySelectorAll(`#rows td.${sp.cell}`).forEach((td) => { td.textContent = splitText(valueFor(td.dataset.app), total, amount); });
-      $(sp.foot).textContent = amount === null ? '—' : inr(total > 0 ? amount : 0);
-    }
+    const amounts = SPLITS.map((sp) => RA.parseAmount($(sp.box).value));
+    document.querySelectorAll('#rows tr[data-app]').forEach((tr) => {
+      const usd = valueFor(tr.dataset.app);
+      const inrValue = inrAmount(usd, rate);
+      const shares = amounts.map((amount) => share(usd, total, amount));
+      tr.querySelector('td.inr-cell').textContent = inrOrDash(inrValue);
+      SPLITS.forEach((sp, i) => { tr.querySelector(`td.${sp.cell}`).textContent = inrOrDash(shares[i]); });
+      tr.querySelector('td.netinr-cell').textContent = inrOrDash(netInr(inrValue, shares));
+    });
+    const totalInr = inrAmount(total, rate);
+    const totalShares = amounts.map((amount) => (amount === null ? null : total > 0 ? amount : 0));
+    SPLITS.forEach((sp, i) => { $(sp.foot).textContent = inrOrDash(totalShares[i]); });
+    const totalNet = netInr(totalInr, totalShares);
     $('footTotal').textContent = money(total);
     $('footNet').textContent = money(net(total));
-    $('footInr').textContent = inrText(total, rate);
+    $('footInr').textContent = inrOrDash(totalInr);
+    $('footNetInr').textContent = inrOrDash(totalNet);
+    $('netInr').value = totalNet === null ? '' : inr(totalNet).replace('₹', '');
   }
 
   function typeSelect(app, i) {
@@ -219,7 +237,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     fileTotals = new Map(m.apps.map((a) => [a.name, a.total]));
     $('fileName').textContent = name;
     $('rows').innerHTML = m.apps.map((a, i) =>
-      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${amountInput(a.name, i)}</td><td class="net" id="net-${i}">${money(net(valueFor(a.name)))}</td><td class="net inr-cell" data-app="${esc(a.name)}" title="After 10% deduction × USD Rate"></td><td class="net ivt-cell" data-app="${esc(a.name)}" title="App revenue ÷ total revenue of all apps × Other/AdX Invalid Traffic"></td><td class="net tds-cell" data-app="${esc(a.name)}" title="App revenue ÷ total revenue of all apps × TDS"></td></tr>`).join('');
+      `<tr data-app="${esc(a.name)}"><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${amountInput(a.name, i)}</td><td class="net" id="net-${i}">${money(net(valueFor(a.name)))}</td><td class="net inr-cell" data-app="${esc(a.name)}" title="After 10% deduction × USD Rate"></td><td class="net ivt-cell" data-app="${esc(a.name)}" title="App revenue ÷ total revenue of all apps × Other/AdX Invalid Traffic"></td><td class="net tds-cell" data-app="${esc(a.name)}" title="App revenue ÷ total revenue of all apps × TDS"></td><td class="netinr-cell" title="INR − invalid traffic share − TDS share"></td></tr>`).join('');
     updateFooter();
     show('');
     $('tablePanel').hidden = false;
@@ -228,13 +246,14 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
 
   function clearAll() {
     edits = {}; saveEdits(); fileTotals = new Map();
-    extras = {}; saveExtras(); fillExtras();
+    extras = {}; saveExtras(); fillExtras(); $('netInr').value = '';
     $('rows').innerHTML = '';
     $('footTotal').textContent = '';
     $('footNet').textContent = '';
     $('footInr').textContent = '';
     $('footIvt').textContent = '';
     $('footTds').textContent = '';
+    $('footNetInr').textContent = '';
     $('tablePanel').hidden = true;
     $('clearAll').hidden = true;
     $('fileName').textContent = 'No file loaded';
@@ -243,7 +262,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
 
   // The four boxes under the table, remembered in this browser until Clear all.
   const EXTRA_KEY = 'appRevenue.extras';
-  const EXTRA_IDS = ['usdRate', 'invalidTraffic', 'tds', 'netInr'];
+  const EXTRA_IDS = ['usdRate', 'invalidTraffic', 'tds'];
   let extras = {};
   try { extras = JSON.parse(localStorage.getItem(EXTRA_KEY)) || {}; } catch (e) { extras = {}; }
   function saveExtras() { try { localStorage.setItem(EXTRA_KEY, JSON.stringify(extras)); } catch (e) { /* storage unavailable */ } }
