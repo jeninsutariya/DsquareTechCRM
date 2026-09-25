@@ -48,6 +48,9 @@ h1 { font-size: 26px; }
   background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn:hover { filter: brightness(1.08); }
 .btn svg { width: 16px; height: 16px; }
+.btn.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); font: inherit; font-weight: 600; }
+.btn.secondary:hover { filter: none; background: var(--surface-2); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .total { background: var(--hero); color: var(--hero-ink); border-radius: 14px; padding: 24px; display: grid; gap: 4px; }
 .total h2 { font: 500 14px "IBM Plex Sans", system-ui, sans-serif; color: var(--hero-muted); }
@@ -76,10 +79,13 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
       <h1>App Revenue</h1>
       <p class="file" id="fileName">Loading…</p>
     </div>
+    <div class="actions">
+    <button type="button" class="btn secondary" id="clearAll" hidden>Clear all</button>
     <label class="btn" for="fileInput">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V2M4.5 5.5 8 2l3.5 3.5M2.5 10.5v3h11v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Upload Excel
     </label>
+    </div>
     <input id="fileInput" type="file" accept=".xlsx,.xls,.xlsm,.csv" hidden>
   </header>
 
@@ -140,7 +146,22 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     show('');
     $('totalCard').hidden = false;
     $('tablePanel').hidden = false;
+    $('clearAll').hidden = false;
   }
+
+  function clearAll() {
+    $('total').textContent = '';
+    $('totalSub').textContent = '';
+    $('rows').innerHTML = '';
+    $('footTotal').textContent = '';
+    $('totalCard').hidden = true;
+    $('tablePanel').hidden = true;
+    $('clearAll').hidden = true;
+    $('fileName').textContent = 'No file loaded';
+    show('Cleared. Upload an Excel file to see the total revenue for every app.');
+  }
+
+  $('clearAll').addEventListener('click', clearAll);
 
   $('fileInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
