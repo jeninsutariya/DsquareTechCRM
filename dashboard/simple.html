@@ -76,10 +76,13 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
 
 .extras { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 20px clamp(16px, 2vw, 28px); border-top: 2px solid var(--line-strong); }
 .extras label { display: grid; gap: 6px; min-width: 0; }
-.extras span { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.extras label > span:first-child { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
 .extras input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px;
   background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .extras input:hover { border-color: var(--accent); }
+.inr { position: relative; display: block; }
+.inr::before { content: "₹"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-2); font-weight: 600; font-size: 16px; pointer-events: none; }
+.inr input { padding-left: 28px; }
 @media (max-width: 800px) { .extras { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .extras { grid-template-columns: minmax(0, 1fr); } }
 .msg { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 12px; padding: 24px; color: var(--ink-2); }
@@ -115,10 +118,10 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
       </table>
     </div>
     <div class="extras" id="extras">
-      <label for="usdRate"><span>USD Rate</span><input id="usdRate" inputmode="decimal" autocomplete="off"></label>
-      <label for="invalidTraffic"><span>Other/AdX Invalid Traffic</span><input id="invalidTraffic" inputmode="decimal" autocomplete="off"></label>
-      <label for="tds"><span>TDS</span><input id="tds" inputmode="decimal" autocomplete="off"></label>
-      <label for="netInr"><span>Net Amount (INR)</span><input id="netInr" inputmode="decimal" autocomplete="off"></label>
+      <label for="usdRate"><span>USD Rate</span><span class="inr"><input id="usdRate" inputmode="decimal" autocomplete="off"></span></label>
+      <label for="invalidTraffic"><span>Other/AdX Invalid Traffic</span><span class="inr"><input id="invalidTraffic" inputmode="decimal" autocomplete="off"></span></label>
+      <label for="tds"><span>TDS</span><span class="inr"><input id="tds" inputmode="decimal" autocomplete="off"></span></label>
+      <label for="netInr"><span>Net Amount (INR)</span><span class="inr"><input id="netInr" inputmode="decimal" autocomplete="off"></span></label>
     </div>
   </section>
 </div>
