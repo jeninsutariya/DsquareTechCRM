@@ -112,6 +112,28 @@ th.right, td.right { text-align: right; }
 .mkt-summary { border-top: 1px solid var(--line); }
 .mkt-summary .result-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .mkt-summary .result { align-content: start; }
+.calc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .calc-grid { grid-template-columns: minmax(0, 1fr); } }
+.calc { padding-bottom: 20px; }
+.calc .mkt-head { flex-wrap: wrap; }
+.fund-field { display: flex; align-items: center; gap: 10px; }
+.fund-field > span:first-child { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.pct { position: relative; display: block; }
+.pct::after { content: "%"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-2); font-weight: 600; pointer-events: none; }
+.pct input { width: 90px; height: 38px; padding: 0 28px 0 12px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; }
+.pct input.invalid { border-color: var(--bad); color: var(--bad); }
+.calc-warn { margin: 0 clamp(16px, 2vw, 24px) 12px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px dashed var(--line-strong); color: var(--ink-2); font-size: 13.5px; }
+.calc-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.calc-table td { padding: 9px clamp(16px, 2vw, 24px); border-top: 1px solid var(--line); font-size: 15px; white-space: normal; }
+.calc-table td:last-child { text-align: right; white-space: nowrap; }
+.calc-table .op { color: var(--muted); width: 1.5em; padding-right: 0; }
+.calc-table tr.sub td { font-weight: 700; background: var(--surface-2); }
+.calc-table small { display: block; color: var(--muted); font-size: 12.5px; }
+.calc-cards { padding: 16px clamp(16px, 2vw, 24px) 0; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+@media (max-width: 480px) { .calc-cards { grid-template-columns: minmax(0, 1fr) !important; } }
+.calc-cards strong { white-space: nowrap; }
+.mkt .calc-table td.op, .mkt .calc-table td:nth-child(2) { text-align: left; }
+.calc-cards .result { align-content: start; }
 .mkt-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px clamp(16px, 2vw, 24px); }
 .mkt-head h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: clamp(16px, 1.3vw, 19px); }
 .btn.small { height: 34px; padding: 0 12px; font: inherit; font-weight: 600; font-size: 14px; border: 0; }
@@ -215,6 +237,27 @@ th.right, td.right { text-align: right; }
       <div class="result-grid" id="mktSummary"></div>
     </div>
   </section>
+
+  <section class="mkt" id="totalCalc" aria-labelledby="calcTitle">
+    <h2 id="calcTitle">Total calculation</h2>
+    <div class="calc-grid">
+      <div class="panel calc">
+        <div class="mkt-head">
+          <h3>Company</h3>
+          <label class="fund-field" for="fundPct"><span>Company fund %</span><span class="pct"><input id="fundPct" inputmode="decimal" autocomplete="off"></span></label>
+        </div>
+        <p class="calc-warn" id="calcCompanyWarn" hidden></p>
+        <table class="calc-table" id="calcCompanyTable"></table>
+        <div class="result-grid calc-cards" id="calcCompanyCards"></div>
+      </div>
+      <div class="panel calc">
+        <div class="mkt-head"><h3>Personal</h3></div>
+        <p class="calc-warn" id="calcPersonalWarn" hidden></p>
+        <table class="calc-table" id="calcPersonalTable"></table>
+        <div class="result-grid calc-cards" id="calcPersonalCards"></div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <div class="modal-back" id="mktModal" hidden>
@@ -242,6 +285,9 @@ th.right, td.right { text-align: right; }
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const money = (n) => fmt.format(Number.isFinite(n) && Math.abs(n) >= 0.005 ? n : 0);
+
+  // Numbers the Total calculation section reads from the other sections. null = not available yet.
+  const calc = { gameCompany: null, gamePersonal: null, bankDiff: null, admobCompany: null, admobPersonal: null, mkt: null };
 
   // Each app's type is remembered in this browser; Company is the default.
   const TYPES = ['Company', 'Personal', 'Other'];
@@ -330,7 +376,11 @@ th.right, td.right { text-align: right; }
       $(id).textContent = hasRate ? inr(paise(RA.sum(b.sum))) : '—';
       $(id + 'N').textContent = `${b.apps} app${b.apps === 1 ? '' : 's'}`;
     });
+    calc.gameCompany = hasRate ? paise(RA.sum(byType.Company.sum)) : null;
+    calc.gamePersonal = hasRate ? paise(RA.sum(byType.Personal.sum)) : null;
     const bank = RA.parseAmount($('bankAmount').value);
+    calc.bankDiff = totalNet === null || bank === null ? null : paise(bank - totalNet);
+    renderTotalCalc();
     if (totalNet === null || bank === null) {
       $('resDiff').textContent = '—';
       $('resDiffNote').textContent = totalNet === null ? 'Enter the USD Rate' : 'Enter the Bank Amount';
@@ -385,7 +435,91 @@ th.right, td.right { text-align: right; }
     $('tablePanel').hidden = true;
     $('clearAll').hidden = true;
     $('fileName').textContent = 'No file loaded';
+    Object.assign(calc, { gameCompany: null, gamePersonal: null, bankDiff: null });
+    renderTotalCalc();
     show('Cleared. Upload an Excel file to see the total revenue for every app.');
+  }
+
+  // Total calculation: Company and Personal profit, the Company fund, and each person's share.
+  // Company: revenue = Game Ad Zoon Company apps + AdMob Company (INR); profit = revenue − Company marketing.
+  //   Company fund = profit × fund % + the "Company" person's marketing + (Bank Amount − Net Amount).
+  //   Jenin, Meet, Keyur = (profit − profit × fund %) ÷ 3 + their own Company marketing.
+  // Personal: revenue = Game Ad Zoon Personal apps + AdMob Personal (INR); profit = revenue − Personal marketing.
+  //   Jenin, Meet = profit ÷ 2 + their own Personal marketing.
+  const FUND_KEY = 'appRevenue.fundPct';
+  const DEFAULT_FUND = 40;
+  try { $('fundPct').value = localStorage.getItem(FUND_KEY) || String(DEFAULT_FUND); } catch (e) { $('fundPct').value = String(DEFAULT_FUND); }
+  $('fundPct').addEventListener('input', (e) => {
+    try { localStorage.setItem(FUND_KEY, e.target.value); } catch (err) { /* storage unavailable */ }
+    renderTotalCalc();
+  });
+
+  function fundPercent() {
+    const raw = $('fundPct').value.trim();
+    const v = raw === '' ? DEFAULT_FUND : RA.parseAmount(raw);
+    const ok = v !== null && v >= 0 && v <= 100;
+    $('fundPct').classList.toggle('invalid', !ok);
+    return ok ? { pct: v, ok } : { pct: DEFAULT_FUND, ok };
+  }
+
+  const calcRow = (op, label, value, note, cls) =>
+    `<tr class="${cls || ''}"><td class="op">${op}</td><td>${label}${note ? `<small>${note}</small>` : ''}</td><td>${value === null ? '—' : inr(value)}</td></tr>`;
+  const calcCard = (label, value, note, strong) =>
+    `<div class="result${strong ? ' diff' : ''}"><span>${label}</span><strong>${inr(value)}</strong><small>${note}</small></div>`;
+  const orZero = (v) => (v === null ? 0 : v);
+  function warn(id, missing) {
+    $(id).hidden = !missing.length;
+    $(id).textContent = missing.length ? `Counted as ₹0 until entered: ${missing.join('; ')}.` : '';
+  }
+
+  function renderTotalCalc() {
+    if (!calc.mkt) return; // Marketing has not been read yet.
+    const m = calc.mkt;
+    const pm = (dept, person) => orZero(m[dept].people[person]);
+
+    // Company
+    const { pct, ok } = fundPercent();
+    const cRevenue = paise(orZero(calc.gameCompany) + orZero(calc.admobCompany));
+    const cProfit = paise(cRevenue - m.Company.total);
+    const fundShare = paise(cProfit * pct / 100);
+    const bankDiff = orZero(calc.bankDiff);
+    const fund = paise(fundShare + pm('Company', 'Company') + bankDiff);
+    const remaining = paise(cProfit - fundShare);
+    const each = remaining / 3;
+    const missingC = [];
+    if (calc.gameCompany === null) missingC.push('Game Ad Zoon USD Rate');
+    if (calc.admobCompany === null) missingC.push('Google AdMob USD Rate');
+    if (calc.bankDiff === null) missingC.push('Game Ad Zoon Bank Amount');
+    warn('calcCompanyWarn', missingC);
+    $('calcCompanyTable').innerHTML =
+      calcRow('', 'Game Ad Zoon', calc.gameCompany, 'Company apps total (Net Amount INR)') +
+      calcRow('+', 'Google AdMob', calc.admobCompany, 'Company (INR), after tax') +
+      calcRow('=', 'Company total revenue', cRevenue, '', 'sub') +
+      calcRow('−', 'Company total marketing', m.Company.total, 'Marketing › Company total') +
+      calcRow('=', 'Company profit', cProfit, '', 'sub') +
+      calcRow('', `Company fund share (${pct}% of profit)`, fundShare, ok ? '' : `Enter a % from 0 to 100. Using ${DEFAULT_FUND}% for now.`) +
+      calcRow('', `Remaining profit (${paise(100 - pct)}%)`, remaining, 'Split equally between Jenin, Meet and Keyur');
+    $('calcCompanyCards').innerHTML =
+      calcCard('Company fund', fund, `${pct}% of profit ${inr(fundShare)}<br>+ Company marketing ${inr(pm('Company', 'Company'))}<br>+ Bank − Net ${calc.bankDiff === null ? '—' : inr(bankDiff)}`, true) +
+      ['Jenin', 'Meet', 'Keyur'].map((p) => calcCard(p, paise(each + pm('Company', p)),
+        `Profit ÷ 3 ${inr(paise(each))}<br>+ marketing ${inr(pm('Company', p))}`)).join('');
+
+    // Personal
+    const pRevenue = paise(orZero(calc.gamePersonal) + orZero(calc.admobPersonal));
+    const pProfit = paise(pRevenue - m.Personal.total);
+    const half = pProfit / 2;
+    const missingP = [];
+    if (calc.gamePersonal === null) missingP.push('Game Ad Zoon USD Rate');
+    if (calc.admobPersonal === null) missingP.push('Google AdMob USD Rate');
+    warn('calcPersonalWarn', missingP);
+    $('calcPersonalTable').innerHTML =
+      calcRow('', 'Game Ad Zoon', calc.gamePersonal, 'Personal apps total (Net Amount INR)') +
+      calcRow('+', 'Google AdMob', calc.admobPersonal, 'Personal (INR), after tax') +
+      calcRow('=', 'Personal total revenue', pRevenue, '', 'sub') +
+      calcRow('−', 'Personal total marketing', m.Personal.total, 'Marketing › Personal total') +
+      calcRow('=', 'Personal profit', pProfit, 'Split equally between Jenin and Meet', 'sub');
+    $('calcPersonalCards').innerHTML = ['Jenin', 'Meet'].map((p) => calcCard(p, paise(half + pm('Personal', p)),
+      `Profit ÷ 2 ${inr(paise(half))}<br>+ marketing ${inr(pm('Personal', p))}`)).join('');
   }
 
   // Marketing: two departments. Each Add opens a popup for an app name and each person's marketing (INR);
@@ -432,6 +566,11 @@ th.right, td.right { text-align: right; }
     const deptTotals = DEPTS.map((d) => [d.name, paise(RA.sum(mkt[d.name].map((r) => rowTotal(r, d))))]);
     cards.push(`<div class="result diff"><span>All marketing</span><strong>${inr(paise(RA.sum(deptTotals.map(([, v]) => v))))}</strong><small>${deptTotals.map(([n, v]) => `${n} ${inr(v)}`).join('<br>')}</small></div>`);
     $('mktSummary').innerHTML = cards.join('');
+    calc.mkt = Object.fromEntries(DEPTS.map((d) => [d.name, {
+      total: paise(RA.sum(mkt[d.name].map((r) => rowTotal(r, d)))),
+      people: Object.fromEntries(d.people.map((p) => [p, deptSum(d, p)])),
+    }]));
+    renderTotalCalc();
   }
 
   let mktDept = 0, mktOpener = null;
@@ -554,6 +693,9 @@ th.right, td.right { text-align: right; }
 
   // Google AdMob Result: totals of the table above. INR figures are after tax.
   function renderAdmobResult(hasRate, [company, personal], [companyTax, personalTax], unsplit) {
+    calc.admobCompany = hasRate ? company : null;
+    calc.admobPersonal = hasRate ? personal : null;
+    renderTotalCalc();
     $('admobResRevenue').textContent = money(RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[0][a] || '') || 0)));
     const note = (tax) => (tax > 0 ? `After ${inr(tax)} tax` : 'No tax');
     $('admobResCompany').textContent = hasRate ? inr(company) : '—';
