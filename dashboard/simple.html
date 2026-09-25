@@ -158,9 +158,9 @@ th.right, td.right { text-align: right; }
     <h2>Google AdMob</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th><th class="right">Company</th><th class="right">Personal</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th><th class="right">Company</th><th class="right">Personal</th><th class="right">Tax Amount</th></tr></thead>
         <tbody id="admobRows"></tbody>
-        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td><td class="right" id="admobCompanyTotal"></td><td class="right" id="admobPersonalTotal"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td><td class="right" id="admobCompanyTotal"></td><td class="right" id="admobPersonalTotal"></td><td class="right" id="admobTaxTotal"></td></tr></tfoot>
       </table>
     </div>
     <div class="extras">
@@ -333,18 +333,20 @@ th.right, td.right { text-align: right; }
     { key: 'appRevenue.admob', label: 'Revenue', total: 'admobTotal' },
     { key: 'appRevenue.admobCompany', label: 'Company', total: 'admobCompanyTotal' },
     { key: 'appRevenue.admobPersonal', label: 'Personal', total: 'admobPersonalTotal' },
+    { key: 'appRevenue.admobTax', label: 'Tax Amount', total: 'admobTaxTotal', symbol: '₹' },
   ];
   const admobData = ADMOB_COLS.map((c) => { try { return JSON.parse(localStorage.getItem(c.key)) || {}; } catch (e) { return {}; } });
   const saveAdmob = (ci) => { try { localStorage.setItem(ADMOB_COLS[ci].key, JSON.stringify(admobData[ci])); } catch (e) { /* storage unavailable */ } };
   const isBad = (v) => (v || '').trim() !== '' && RA.parseAmount(v) === null;
   function updateAdmobTotals() {
     ADMOB_COLS.forEach((c, ci) => {
-      $(c.total).textContent = money(RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[ci][a] || '') || 0)));
+      const sum = RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[ci][a] || '') || 0));
+      $(c.total).textContent = c.symbol === '₹' ? inr(sum) : money(sum);
     });
   }
   $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>${ADMOB_COLS.map((c, ci) => {
     const v = admobData[ci][a] || '';
-    return `<td class="right"><span class="amount">$<input id="admob-${ci}-${i}" data-account="${esc(a)}" data-col="${ci}" inputmode="decimal" autocomplete="off"
+    return `<td class="right"><span class="amount">${c.symbol || '$'}<input id="admob-${ci}-${i}" data-account="${esc(a)}" data-col="${ci}" inputmode="decimal" autocomplete="off"
       placeholder="0.00" class="${isBad(v) ? 'invalid' : ''}" value="${esc(v)}" aria-label="${c.label} for ${esc(a)}"></span></td>`;
   }).join('')}</tr>`).join('');
   updateAdmobTotals();
