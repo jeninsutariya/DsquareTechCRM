@@ -324,6 +324,8 @@ th.right, td.right { text-align: right; }
   // Uses the rounded dollar figure shown in the After 10% deduction column, so it matches a calculator.
   const paise = (n) => Math.round(n * 100) / 100;
   const inrAmount = (usd, rate) => (rate === null ? null : paise(paise(net(usd)) * rate));
+  // Apps set to Other skip the 10% deduction: their INR is Total revenue × USD Rate.
+  const inrAmountFull = (usd, rate) => (rate === null ? null : paise(paise(usd) * rate));
 
   // Amounts from the boxes under the table that are split across apps by revenue:
   // app share = app revenue ÷ total revenue of all apps × the box's amount.
@@ -347,9 +349,12 @@ th.right, td.right { text-align: right; }
     const rowInr = [], rowNet = [];
     document.querySelectorAll('#rows tr[data-app]').forEach((tr) => {
       const usd = valueFor(tr.dataset.app);
-      const inrValue = inrAmount(usd, rate);
+      const isOther = tr.querySelector('select[data-app]').value === 'Other';
+      const inrValue = isOther ? inrAmountFull(usd, rate) : inrAmount(usd, rate);
       const shares = amounts.map((amount) => share(usd, total, amount));
-      tr.querySelector('td.inr-cell').textContent = inrOrDash(inrValue);
+      const inrCell = tr.querySelector('td.inr-cell');
+      inrCell.textContent = inrOrDash(inrValue);
+      inrCell.title = isOther ? 'Other app: Total revenue × USD Rate (no 10% deduction)' : 'After 10% deduction × USD Rate';
       SPLITS.forEach((sp, i) => { tr.querySelector(`td.${sp.cell}`).textContent = inrOrDash(shares[i]); });
       const appNet = netInr(inrValue, shares);
       if (inrValue !== null) { rowInr.push(inrValue); rowNet.push(appNet); }
