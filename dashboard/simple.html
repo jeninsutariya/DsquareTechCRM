@@ -109,6 +109,9 @@ th.right, td.right { text-align: right; }
 .mkt > h2 { font-size: clamp(17px, 1.5vw, 22px); }
 .mkt-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
 @media (max-width: 1200px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt-summary { border-top: 1px solid var(--line); }
+.mkt-summary .result-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.mkt-summary .result { align-content: start; }
 .mkt-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px clamp(16px, 2vw, 24px); }
 .mkt-head h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: clamp(16px, 1.3vw, 19px); }
 .btn.small { height: 34px; padding: 0 12px; font: inherit; font-weight: 600; font-size: 14px; border: 0; }
@@ -207,6 +210,10 @@ th.right, td.right { text-align: right; }
   <section class="mkt" id="marketing" aria-labelledby="mktTitle">
     <h2 id="mktTitle">Marketing</h2>
     <div class="mkt-grid" id="mktGrid"></div>
+    <div class="panel results mkt-summary">
+      <h3>Total marketing</h3>
+      <div class="result-grid" id="mktSummary"></div>
+    </div>
   </section>
 </div>
 
@@ -410,6 +417,21 @@ th.right, td.right { text-align: right; }
         </table></div>
       </div>`;
     }).join('');
+    renderMarketingSummary();
+  }
+
+  // Summary under both departments: each person's marketing across Company and Personal, and the overall total.
+  function renderMarketingSummary() {
+    const people = [...new Set(DEPTS.flatMap((d) => d.people))];
+    const deptSum = (d, person) => (d.people.includes(person) ? paise(RA.sum(mkt[d.name].map((r) => r.amounts[person] || 0))) : null);
+    const cards = people.map((person) => {
+      const parts = DEPTS.map((d) => [d.name, deptSum(d, person)]).filter(([, v]) => v !== null);
+      const total = paise(RA.sum(parts.map(([, v]) => v)));
+      return `<div class="result"><span>${esc(person)}</span><strong>${inr(total)}</strong><small>${parts.map(([n, v]) => `${n} ${inr(v)}`).join('<br>')}</small></div>`;
+    });
+    const deptTotals = DEPTS.map((d) => [d.name, paise(RA.sum(mkt[d.name].map((r) => rowTotal(r, d))))]);
+    cards.push(`<div class="result diff"><span>All marketing</span><strong>${inr(paise(RA.sum(deptTotals.map(([, v]) => v))))}</strong><small>${deptTotals.map(([n, v]) => `${n} ${inr(v)}`).join('<br>')}</small></div>`);
+    $('mktSummary').innerHTML = cards.join('');
   }
 
   let mktDept = 0, mktOpener = null;
