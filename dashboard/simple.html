@@ -12,7 +12,7 @@
   --ink: #0f1b2d; --ink-2: #4a5568; --muted: #7a8494;
   --line: #e2e6ec; --line-strong: #c9d0da;
   --accent: #1d4f9c; --accent-ink: #ffffff;
-  --hero: #0f2a52; --hero-ink: #ffffff; --hero-muted: #a9bddb; --bad: #b42323;
+  --bad: #b42323;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -21,7 +21,7 @@
     --ink: #eef2f7; --ink-2: #b7c0cd; --muted: #8791a0;
     --line: #243042; --line-strong: #34425a;
     --accent: #6ea2f0; --accent-ink: #0c1119;
-    --hero: #1b3560; --hero-ink: #ffffff; --hero-muted: #a9bddb; --bad: #f07272;
+    --bad: #f07272;
   }
 }
 :root[data-theme="dark"] {
@@ -30,7 +30,7 @@
   --ink: #eef2f7; --ink-2: #b7c0cd; --muted: #8791a0;
   --line: #243042; --line-strong: #34425a;
   --accent: #6ea2f0; --accent-ink: #0c1119;
-  --hero: #1b3560; --hero-ink: #ffffff; --hero-muted: #a9bddb; --bad: #f07272;
+  --bad: #f07272;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -52,10 +52,6 @@ h1 { font-size: clamp(26px, 2.6vw, 36px); }
 .btn.secondary:hover { filter: none; background: var(--surface-2); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-.total { background: var(--hero); color: var(--hero-ink); border-radius: 16px; padding: clamp(24px, 3vw, 40px); display: grid; gap: 4px; }
-.total h2 { font: 500 clamp(14px, 1.2vw, 18px) "IBM Plex Sans", system-ui, sans-serif; color: var(--hero-muted); }
-.total .val { font-family: "Instrument Sans", system-ui, sans-serif; font-size: clamp(36px, 6vw, 80px); font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.total .sub { color: var(--hero-muted); font-size: clamp(13px, 1.1vw, 16px); }
 
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .panel h2 { font-size: clamp(17px, 1.5vw, 22px); padding: 20px clamp(16px, 2vw, 28px) 14px; }
@@ -92,12 +88,6 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
 
   <p class="msg" id="msg" hidden></p>
 
-  <section class="total" id="totalCard" hidden>
-    <h2>Total revenue, all apps</h2>
-    <p class="val" id="total"></p>
-    <p class="sub" id="totalSub"></p>
-  </section>
-
   <section class="panel" id="tablePanel" hidden>
     <h2>Total revenue by app</h2>
     <div class="table-wrap">
@@ -121,7 +111,6 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const money = (n) => fmt.format(Number.isFinite(n) && Math.abs(n) >= 0.005 ? n : 0);
-  const fmtDate = (k) => RA.dateFromKey(k).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
 
   function show(msg, isError) {
     $('msg').hidden = !msg;
@@ -139,23 +128,17 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     }
     const m = RA.compute(records, {});
     $('fileName').textContent = name;
-    $('total').textContent = money(m.kpis.total);
-    $('totalSub').textContent = `${m.apps.length} apps · ${fmtDate(m.bounds.min)} – ${fmtDate(m.bounds.max)}`;
     $('rows').innerHTML = m.apps.map((a, i) =>
       `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td>${money(a.total)}</td></tr>`).join('');
     $('footTotal').textContent = money(m.kpis.total);
     show('');
-    $('totalCard').hidden = false;
     $('tablePanel').hidden = false;
     $('clearAll').hidden = false;
   }
 
   function clearAll() {
-    $('total').textContent = '';
-    $('totalSub').textContent = '';
     $('rows').innerHTML = '';
     $('footTotal').textContent = '';
-    $('totalCard').hidden = true;
     $('tablePanel').hidden = true;
     $('clearAll').hidden = true;
     $('fileName').textContent = 'No file loaded';
