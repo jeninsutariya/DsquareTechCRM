@@ -1,0 +1,11 @@
+{
+  "name": "dsquaretech-crm",
+  "private": true,
+  "scripts": {
+    "start": "npx --yes http-server dashboard -p 8080 -c-1",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "xlsx": "0.18.5"
+  }
+}
