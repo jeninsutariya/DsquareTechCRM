@@ -66,6 +66,12 @@ thead th { background: var(--surface-2); font-size: 13px; font-weight: 600; lett
 tbody td:last-child { font-weight: 600; }
 tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid var(--line-strong); }
 .num { color: var(--muted); width: 1%; white-space: nowrap; }
+.amount { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.amount input { width: 11ch; height: 36px; padding: 0 10px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; }
+.amount input:hover { border-color: var(--accent); }
+.amount input.edited { background: var(--surface-2); border-color: var(--accent); }
+.amount input.invalid { border-color: var(--bad); color: var(--bad); }
 
 .msg { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 12px; padding: 24px; color: var(--ink-2); }
 .msg.error { color: var(--bad); border-color: var(--bad); }
@@ -120,6 +126,25 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
   let types = {};
   try { types = JSON.parse(localStorage.getItem(TYPE_KEY)) || {}; } catch (e) { types = {}; }
   const saveTypes = () => { try { localStorage.setItem(TYPE_KEY, JSON.stringify(types)); } catch (e) { /* storage unavailable */ } };
+
+  // Edited revenue per app, also remembered in this browser. Uploading a new file or Clear all resets it.
+  const EDIT_KEY = 'appRevenue.edits';
+  let edits = {};
+  try { edits = JSON.parse(localStorage.getItem(EDIT_KEY)) || {}; } catch (e) { edits = {}; }
+  const saveEdits = () => { try { localStorage.setItem(EDIT_KEY, JSON.stringify(edits)); } catch (e) { /* storage unavailable */ } };
+  let fileTotals = new Map();
+  const valueFor = (app) => (Number.isFinite(edits[app]) ? edits[app] : fileTotals.get(app) || 0);
+  const plain = (n) => (Math.round(n * 100) / 100).toFixed(2);
+  function amountInput(app, i) {
+    const edited = Number.isFinite(edits[app]);
+    return `<span class="amount">$<input id="rev-${i}" data-app="${esc(app)}" inputmode="decimal" autocomplete="off"
+      class="${edited ? 'edited' : ''}" value="${plain(valueFor(app))}" aria-label="Total revenue for ${esc(app)}"
+      title="${edited ? `Edited. Value in the file: ${money(fileTotals.get(app) || 0)}. Clear the box to restore it.` : 'Click to edit'}"></span>`;
+  }
+  function updateFooter() {
+    $('footTotal').textContent = money(RA.sum([...fileTotals.keys()].map(valueFor)));
+  }
+
   function typeSelect(app, i) {
     const cur = TYPES.includes(types[app]) ? types[app] : TYPES[0];
     return `<select id="type-${i}" data-app="${esc(app)}" aria-label="Type for ${esc(app)}">` +
@@ -141,16 +166,18 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
       return;
     }
     const m = RA.compute(records, {});
+    fileTotals = new Map(m.apps.map((a) => [a.name, a.total]));
     $('fileName').textContent = name;
     $('rows').innerHTML = m.apps.map((a, i) =>
-      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${money(a.total)}</td></tr>`).join('');
-    $('footTotal').textContent = money(m.kpis.total);
+      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${amountInput(a.name, i)}</td></tr>`).join('');
+    updateFooter();
     show('');
     $('tablePanel').hidden = false;
     $('clearAll').hidden = false;
   }
 
   function clearAll() {
+    edits = {}; saveEdits(); fileTotals = new Map();
     $('rows').innerHTML = '';
     $('footTotal').textContent = '';
     $('tablePanel').hidden = true;
@@ -163,10 +190,29 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
   $('rows').addEventListener('change', (e) => {
     if (e.target.matches('select[data-app]')) { types[e.target.dataset.app] = e.target.value; saveTypes(); }
   });
+  $('rows').addEventListener('input', (e) => {
+    const box = e.target;
+    if (!box.matches('input[data-app]')) return;
+    const app = box.dataset.app;
+    const v = box.value.trim() === '' ? null : RA.parseAmount(box.value);
+    box.classList.toggle('invalid', box.value.trim() !== '' && v === null);
+    if (box.value.trim() === '') delete edits[app];
+    else if (v !== null) edits[app] = v;
+    box.classList.toggle('edited', Number.isFinite(edits[app]));
+    saveEdits();
+    updateFooter();
+  });
+  // Tidy the box when leaving it: an empty box goes back to the file's value.
+  $('rows').addEventListener('focusout', (e) => {
+    const box = e.target;
+    if (!box.matches('input[data-app]')) return;
+    box.classList.remove('invalid');
+    box.value = plain(valueFor(box.dataset.app));
+  });
 
   $('fileInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (file) file.arrayBuffer().then((buf) => render(buf, file.name));
+    if (file) { edits = {}; saveEdits(); file.arrayBuffer().then((buf) => render(buf, file.name)); }
     e.target.value = '';
   });
 
