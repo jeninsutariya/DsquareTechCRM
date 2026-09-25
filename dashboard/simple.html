@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>App Revenue Total</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Sans:wght@600;700&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f3f5f8; --surface: #ffffff; --surface-2: #f7f9fb;
+  --ink: #0f1b2d; --ink-2: #4a5568; --muted: #7a8494;
+  --line: #e2e6ec; --line-strong: #c9d0da;
+  --accent: #1d4f9c; --accent-ink: #ffffff;
+  --bad: #b42323;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0c1119; --surface: #141b26; --surface-2: #19212e;
+    --ink: #eef2f7; --ink-2: #b7c0cd; --muted: #8791a0;
+    --line: #243042; --line-strong: #34425a;
+    --accent: #6ea2f0; --accent-ink: #0c1119;
+    --bad: #f07272;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0c1119; --surface: #141b26; --surface-2: #19212e;
+  --ink: #eef2f7; --ink-2: #b7c0cd; --muted: #8791a0;
+  --line: #243042; --line-strong: #34425a;
+  --accent: #6ea2f0; --accent-ink: #0c1119;
+  --bad: #f07272;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font: 16px/1.5 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
+[hidden] { display: none !important; }
+h1, h2 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; }
+p { margin: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.shell { width: 100%; padding-inline: clamp(16px, 3vw, 48px); padding-block: 28px 48px; display: grid; gap: 24px; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+h1 { font-size: clamp(26px, 2.6vw, 36px); }
+.file { color: var(--muted); font-size: 13px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn:hover { filter: brightness(1.08); }
+.btn svg { width: 16px; height: 16px; }
+.btn.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); font: inherit; font-weight: 600; }
+.btn.secondary:hover { filter: none; background: var(--surface-2); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.panel h2 { font-size: clamp(17px, 1.5vw, 22px); padding: 20px clamp(16px, 2vw, 28px) 14px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: clamp(10px, 1vw, 14px) clamp(8px, 0.9vw, 16px); text-align: right; border-top: 1px solid var(--line); }
+th:first-child, td:first-child { padding-left: clamp(16px, 2vw, 28px); }
+th:last-child, td:last-child { padding-right: clamp(16px, 2vw, 28px); }
+tbody td, tfoot td { font-size: clamp(14px, 1vw, 16px); white-space: nowrap; }
+th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
+.type { width: 1%; white-space: nowrap; }
+tbody td:nth-child(2), tfoot td:nth-child(2) { white-space: nowrap; }
+.type select { height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; cursor: pointer; }
+thead th { background: var(--surface-2); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+tbody td:last-child { font-weight: 600; }
+.net { color: var(--ink-2); white-space: nowrap; }
+tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid var(--line-strong); }
+.num { color: var(--muted); width: 1%; white-space: nowrap; }
+th.right, td.right { text-align: right; }
+#admobRows td { font-weight: 400; }
+#admobRows input.auto:not(.invalid) { background: var(--surface-2); border-style: dashed; }
+.amount { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.amount input { width: 10ch; height: 36px; padding: 0 10px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; }
+.amount input:hover { border-color: var(--accent); }
+.amount input.edited { background: var(--surface-2); border-color: var(--accent); }
+.amount input.invalid { border-color: var(--bad); color: var(--bad); }
+
+.extras { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; padding: 20px clamp(16px, 2vw, 28px); border-top: 2px solid var(--line-strong); }
+.extras label { display: grid; gap: 6px; min-width: 0; }
+.extras label > span:first-child { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.extras input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.extras input:hover { border-color: var(--accent); }
+.extras input[readonly] { background: var(--surface-2); border-style: dashed; cursor: default; }
+.extras input[readonly]:hover { border-color: var(--line-strong); }
+.inr { position: relative; display: block; }
+.inr::before { content: "₹"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-2); font-weight: 600; font-size: 16px; pointer-events: none; }
+.inr input { padding-left: 28px; }
+@media (max-width: 1100px) { .extras { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 800px) { .extras { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .extras { grid-template-columns: minmax(0, 1fr); } }
+.results { display: grid; gap: 12px; padding: 20px clamp(16px, 2vw, 28px) 24px; border-top: 1px solid var(--line); }
+.results h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: clamp(16px, 1.3vw, 19px); }
+.result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.result { display: grid; gap: 4px; padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.result span { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.result strong { font-size: clamp(18px, 1.6vw, 24px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.result small { color: var(--muted); font-size: 12.5px; }
+.tax-line { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.result.diff { background: var(--surface); border-color: var(--line-strong); }
+@media (max-width: 1100px) { .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .result-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt { display: grid; gap: 16px; }
+.mkt > h2 { font-size: clamp(17px, 1.5vw, 22px); }
+.mkt-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+@media (max-width: 1200px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt-summary { border-top: 1px solid var(--line); }
+.mkt-summary .result-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.mkt-summary .result { align-content: start; }
+.calc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .calc-grid { grid-template-columns: minmax(0, 1fr); } }
+.calc { padding-bottom: 20px; }
+.calc .mkt-head { flex-wrap: wrap; }
+.fund-field { display: flex; align-items: center; gap: 10px; }
+.fund-field > span:first-child { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.pct { position: relative; display: block; }
+.pct::after { content: "%"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-2); font-weight: 600; pointer-events: none; }
+.pct input { width: 90px; height: 38px; padding: 0 28px 0 12px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; }
+.pct input.invalid { border-color: var(--bad); color: var(--bad); }
+.calc-warn { margin: 0 clamp(16px, 2vw, 24px) 12px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px dashed var(--line-strong); color: var(--ink-2); font-size: 13.5px; }
+.calc-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.calc-table td { padding: 9px clamp(16px, 2vw, 24px); border-top: 1px solid var(--line); font-size: 15px; white-space: normal; }
+.calc-table td:last-child { text-align: right; white-space: nowrap; }
+.calc-table .op { color: var(--muted); width: 1.5em; padding-right: 0; }
+.calc-table tr.sub td { font-weight: 700; background: var(--surface-2); }
+.calc-table small { display: block; color: var(--muted); font-size: 12.5px; }
+.calc-cards { padding: 16px clamp(16px, 2vw, 24px) 0; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+@media (max-width: 480px) { .calc-cards { grid-template-columns: minmax(0, 1fr) !important; } }
+.calc-cards strong { white-space: nowrap; }
+.mkt .calc-table td.op, .mkt .calc-table td:nth-child(2) { text-align: left; }
+.calc-cards .result { align-content: start; }
+.mkt-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px clamp(16px, 2vw, 24px); }
+.mkt-head h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: clamp(16px, 1.3vw, 19px); }
+.btn.small { height: 34px; padding: 0 12px; font: inherit; font-weight: 600; font-size: 14px; border: 0; }
+.mkt table th:not(:first-child), .mkt table td:not(:first-child) { text-align: right; }
+.mkt table th:first-child, .mkt table td:first-child { text-align: left; }
+.mkt .empty-row td { color: var(--muted); text-align: left !important; font-size: 14px; }
+.row-del { background: none; border: 0; padding: 2px 6px; margin-left: 6px; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; border-radius: 6px; }
+.row-del:hover { color: var(--bad); background: var(--surface-2); }
+.modal-back { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(15, 27, 45, 0.45); }
+.modal { width: min(440px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); color: var(--ink); border-radius: 14px;
+  border: 1px solid var(--line); box-shadow: 0 20px 50px rgba(15, 27, 45, 0.25); padding: 22px; display: grid; gap: 14px; }
+.modal h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: 19px; }
+.modal label { display: grid; gap: 6px; }
+.modal label > span:first-child { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.modal input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; }
+.modal .inr input { padding-left: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.modal input.invalid { border-color: var(--bad); }
+.modal-total { display: flex; justify-content: space-between; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; font-weight: 600; }
+.modal-error { color: var(--bad); font-size: 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal-actions .btn { border: 0; font: inherit; font-weight: 600; }
+.modal-actions .btn.secondary { border: 1px solid var(--line-strong); }
+.msg { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 12px; padding: 24px; color: var(--ink-2); }
+.msg.error { color: var(--bad); border-color: var(--bad); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div>
+      <h1>App Revenue</h1>
+      <p class="file" id="fileName">Loading…</p>
+    </div>
+    <div class="actions">
+    <button type="button" class="btn secondary" id="clearAll" hidden>Clear all</button>
+    <label class="btn" for="fileInput">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V2M4.5 5.5 8 2l3.5 3.5M2.5 10.5v3h11v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Upload Excel
+    </label>
+    </div>
+    <input id="fileInput" type="file" accept=".xlsx,.xls,.xlsm,.csv" hidden>
+  </header>
+
+  <p class="msg" id="msg" hidden></p>
+
+  <section class="panel" id="tablePanel" hidden>
+    <h2>Game Ad Zoon</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">#</th><th>App</th><th class="type">Type</th><th>Total revenue</th><th>After 10% deduction</th><th>After 10% deduction (INR)</th><th>Invalid traffic share (INR)</th><th>TDS share (INR)</th><th>Net Amount (INR)</th></tr></thead>
+        <tbody id="rows"></tbody>
+        <tfoot><tr><td></td><td>All apps</td><td></td><td id="footTotal"></td><td id="footNet"></td><td id="footInr"></td><td id="footIvt"></td><td id="footTds"></td><td id="footNetInr"></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="extras" id="extras">
+      <label for="usdRate"><span>USD Rate</span><span class="inr"><input id="usdRate" inputmode="decimal" autocomplete="off"></span></label>
+      <label for="invalidTraffic"><span>Other/AdX Invalid Traffic</span><span class="inr"><input id="invalidTraffic" inputmode="decimal" autocomplete="off"></span></label>
+      <label for="tds"><span>TDS</span><span class="inr"><input id="tds" inputmode="decimal" autocomplete="off"></span></label>
+      <label for="netInr"><span>Net Amount (INR)</span><span class="inr"><input id="netInr" readonly tabindex="-1" title="All apps: INR − invalid traffic share − TDS share"></span></label>
+      <label for="bankAmount"><span>Bank Amount</span><span class="inr"><input id="bankAmount" inputmode="decimal" autocomplete="off"></span></label>
+    </div>
+    <div class="results" id="results">
+      <h3>Result</h3>
+      <div class="result-grid">
+        <div class="result"><span>Company apps total</span><strong id="resCompany">—</strong><small id="resCompanyN"></small></div>
+        <div class="result"><span>Personal apps total</span><strong id="resPersonal">—</strong><small id="resPersonalN"></small></div>
+        <div class="result"><span>Other apps total</span><strong id="resOther">—</strong><small id="resOtherN"></small></div>
+        <div class="result diff"><span>Bank Amount − Net Amount</span><strong id="resDiff">—</strong><small id="resDiffNote"></small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="admobPanel">
+    <h2>Google AdMob</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th><th class="right">Company</th><th class="right">Personal</th><th class="right">Tax Amount</th><th class="right">Company (INR)</th><th class="right">Personal (INR)</th></tr></thead>
+        <tbody id="admobRows"></tbody>
+        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td><td class="right" id="admobCompanyTotal"></td><td class="right" id="admobPersonalTotal"></td><td class="right" id="admobTaxTotal"></td><td class="right" id="admobCompanyInrTotal"></td><td class="right" id="admobPersonalInrTotal"></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="extras">
+      <label for="admobUsdRate"><span>USD Rate</span><span class="inr"><input id="admobUsdRate" inputmode="decimal" autocomplete="off"></span></label>
+    </div>
+    <div class="results">
+      <h3>Result</h3>
+      <div class="result-grid">
+        <div class="result"><span>Total revenue</span><strong id="admobResRevenue">—</strong><small>All accounts, in dollars</small></div>
+        <div class="result"><span>Company (INR)</span><strong id="admobResCompany">—</strong><small id="admobResCompanyNote"></small></div>
+        <div class="result"><span>Personal (INR)</span><strong id="admobResPersonal">—</strong><small id="admobResPersonalNote"></small></div>
+        <div class="result diff"><span>Total (INR)</span><strong id="admobResTotal">—</strong><small id="admobResTotalNote"></small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mkt" id="marketing" aria-labelledby="mktTitle">
+    <h2 id="mktTitle">Marketing</h2>
+    <div class="mkt-grid" id="mktGrid"></div>
+    <div class="panel results mkt-summary">
+      <h3>Total marketing</h3>
+      <div class="result-grid" id="mktSummary"></div>
+    </div>
+  </section>
+
+  <section class="mkt" id="totalCalc" aria-labelledby="calcTitle">
+    <h2 id="calcTitle">Total calculation</h2>
+    <div class="calc-grid">
+      <div class="panel calc">
+        <div class="mkt-head">
+          <h3>Company</h3>
+          <label class="fund-field" for="fundPct"><span>Company fund %</span><span class="pct"><input id="fundPct" inputmode="decimal" autocomplete="off"></span></label>
+        </div>
+        <p class="calc-warn" id="calcCompanyWarn" hidden></p>
+        <table class="calc-table" id="calcCompanyTable"></table>
+        <div class="result-grid calc-cards" id="calcCompanyCards"></div>
+      </div>
+      <div class="panel calc">
+        <div class="mkt-head"><h3>Personal</h3></div>
+        <p class="calc-warn" id="calcPersonalWarn" hidden></p>
+        <table class="calc-table" id="calcPersonalTable"></table>
+        <div class="result-grid calc-cards" id="calcPersonalCards"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-back" id="mktModal" hidden>
+  <form class="modal" id="mktForm" role="dialog" aria-modal="true" aria-labelledby="mktModalTitle" novalidate>
+    <h3 id="mktModalTitle">Add marketing</h3>
+    <label for="mktApp"><span>App name</span><input id="mktApp" autocomplete="off" placeholder="e.g. EMI Loan Calculator"></label>
+    <div id="mktPeople" style="display:grid;gap:14px"></div>
+    <div class="modal-total"><span>App total marketing</span><span id="mktModalTotal">₹0.00</span></div>
+    <p class="modal-error" id="mktError" hidden></p>
+    <div class="modal-actions">
+      <button type="button" class="btn secondary" id="mktCancel">Cancel</button>
+      <button type="submit" class="btn" id="mktDone">Done</button>
+    </div>
+  </form>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="analytics.js"></script>
+<script>
+(function () {
+  'use strict';
+  const RA = RevenueAnalytics;
+  const DEFAULT_FILE = 'data/revenue.xlsx';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = (n) => fmt.format(Number.isFinite(n) && Math.abs(n) >= 0.005 ? n : 0);
+
+  // Numbers the Total calculation section reads from the other sections. null = not available yet.
+  const calc = { gameCompany: null, gamePersonal: null, bankDiff: null, admobCompany: null, admobPersonal: null, mkt: null };
+
+  // Each app's type is remembered in this browser; Company is the default.
+  const TYPES = ['Company', 'Personal', 'Other'];
+  const TYPE_KEY = 'appRevenue.types';
+  let types = {};
+  try { types = JSON.parse(localStorage.getItem(TYPE_KEY)) || {}; } catch (e) { types = {}; }
+  const saveTypes = () => { try { localStorage.setItem(TYPE_KEY, JSON.stringify(types)); } catch (e) { /* storage unavailable */ } };
+
+  // Edited revenue per app, also remembered in this browser. Uploading a new file or Clear all resets it.
+  const EDIT_KEY = 'appRevenue.edits';
+  let edits = {};
+  try { edits = JSON.parse(localStorage.getItem(EDIT_KEY)) || {}; } catch (e) { edits = {}; }
+  const saveEdits = () => { try { localStorage.setItem(EDIT_KEY, JSON.stringify(edits)); } catch (e) { /* storage unavailable */ } };
+  let fileTotals = new Map();
+  const valueFor = (app) => (Number.isFinite(edits[app]) ? edits[app] : fileTotals.get(app) || 0);
+  const plain = (n) => (Math.round(n * 100) / 100).toFixed(2);
+  function amountInput(app, i) {
+    const edited = Number.isFinite(edits[app]);
+    return `<span class="amount">$<input id="rev-${i}" data-app="${esc(app)}" inputmode="decimal" autocomplete="off"
+      class="${edited ? 'edited' : ''}" value="${plain(valueFor(app))}" aria-label="Total revenue for ${esc(app)}"
+      title="${edited ? `Edited. Value in the file: ${money(fileTotals.get(app) || 0)}. Clear the box to restore it.` : 'Click to edit'}"></span>`;
+  }
+  // Revenue minus 10%. Read-only: always worked out from the total revenue box.
+  const DEDUCTION = 0.10;
+  const net = (n) => n * (1 - DEDUCTION);
+  // INR column = After 10% deduction × USD Rate (the USD Rate box under the table).
+  const inrFmt = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const inr = (n) => inrFmt.format(Number.isFinite(n) && Math.abs(n) >= 0.005 ? n : 0);
+  function usdRate() {
+    const v = RA.parseAmount($('usdRate').value);
+    return v !== null && v > 0 ? v : null;
+  }
+  // Uses the rounded dollar figure shown in the After 10% deduction column, so it matches a calculator.
+  // Uses the rounded dollar figure shown in the After 10% deduction column, so it matches a calculator.
+  const paise = (n) => Math.round(n * 100) / 100;
+  const inrAmount = (usd, rate) => (rate === null ? null : paise(paise(net(usd)) * rate));
+  // Apps set to Other skip the 10% deduction: their INR is Total revenue × USD Rate.
+  const inrAmountFull = (usd, rate) => (rate === null ? null : paise(paise(usd) * rate));
+
+  // Amounts from the boxes under the table that are split across apps by revenue:
+  // app share = app revenue ÷ total revenue of all apps × the box's amount.
+  const SPLITS = [
+    { box: 'invalidTraffic', cell: 'ivt-cell', foot: 'footIvt' },
+    { box: 'tds', cell: 'tds-cell', foot: 'footTds' },
+  ];
+  const share = (usd, total, amount) => (amount === null ? null : total > 0 ? (usd / total) * amount : 0);
+  const inrOrDash = (n) => (n === null ? '—' : inr(n));
+
+  // Net Amount (INR) = INR − invalid traffic share − TDS share. An empty deduction box counts as 0.
+  const netInr = (inrValue, shares) => (inrValue === null ? null : paise(inrValue - RA.sum(shares.map((v) => paise(v || 0)))));
+
+  function updateFooter() {
+    const rate = usdRate();
+    const total = RA.sum([...fileTotals.keys()].map(valueFor));
+    const amounts = SPLITS.map((sp) => RA.parseAmount($(sp.box).value));
+    // Result totals: each app's Net Amount (INR) added up by the Type chosen for it.
+    const byType = Object.fromEntries(TYPES.map((t) => [t, { sum: [], apps: 0 }]));
+    // All-apps INR and Net Amount are the sums of the app rows, so every total agrees with the rows above it.
+    const rowInr = [], rowNet = [];
+    document.querySelectorAll('#rows tr[data-app]').forEach((tr) => {
+      const usd = valueFor(tr.dataset.app);
+      const isOther = tr.querySelector('select[data-app]').value === 'Other';
+      const inrValue = isOther ? inrAmountFull(usd, rate) : inrAmount(usd, rate);
+      const shares = amounts.map((amount) => share(usd, total, amount));
+      const inrCell = tr.querySelector('td.inr-cell');
+      inrCell.textContent = inrOrDash(inrValue);
+      inrCell.title = isOther ? 'Other app: Total revenue × USD Rate (no 10% deduction)' : 'After 10% deduction × USD Rate';
+      SPLITS.forEach((sp, i) => { tr.querySelector(`td.${sp.cell}`).textContent = inrOrDash(shares[i]); });
+      const appNet = netInr(inrValue, shares);
+      if (inrValue !== null) { rowInr.push(inrValue); rowNet.push(appNet); }
+      tr.querySelector('td.netinr-cell').textContent = inrOrDash(appNet);
+      const bucket = byType[tr.querySelector('select[data-app]').value] || byType[TYPES[0]];
+      bucket.apps++;
+      if (appNet !== null) bucket.sum.push(appNet);
+    });
+    const totalInr = rate === null ? null : paise(RA.sum(rowInr));
+    const totalShares = amounts.map((amount) => (amount === null ? null : total > 0 ? amount : 0));
+    SPLITS.forEach((sp, i) => { $(sp.foot).textContent = inrOrDash(totalShares[i]); });
+    const totalNet = rate === null ? null : paise(RA.sum(rowNet));
+    $('footTotal').textContent = money(total);
+    $('footNet').textContent = money(net(total));
+    $('footInr').textContent = inrOrDash(totalInr);
+    $('footNetInr').textContent = inrOrDash(totalNet);
+    $('netInr').value = totalNet === null ? '' : inr(totalNet).replace('₹', '');
+    renderResults(byType, rate !== null, totalNet);
+  }
+
+  function renderResults(byType, hasRate, totalNet) {
+    [['Company', 'resCompany'], ['Personal', 'resPersonal'], ['Other', 'resOther']].forEach(([type, id]) => {
+      const b = byType[type];
+      $(id).textContent = hasRate ? inr(paise(RA.sum(b.sum))) : '—';
+      $(id + 'N').textContent = `${b.apps} app${b.apps === 1 ? '' : 's'}`;
+    });
+    calc.gameCompany = hasRate ? paise(RA.sum(byType.Company.sum)) : null;
+    calc.gamePersonal = hasRate ? paise(RA.sum(byType.Personal.sum)) : null;
+    const bank = RA.parseAmount($('bankAmount').value);
+    calc.bankDiff = totalNet === null || bank === null ? null : paise(bank - totalNet);
+    renderTotalCalc();
+    if (totalNet === null || bank === null) {
+      $('resDiff').textContent = '—';
+      $('resDiffNote').textContent = totalNet === null ? 'Enter the USD Rate' : 'Enter the Bank Amount';
+    } else {
+      const diff = paise(bank - totalNet);
+      $('resDiff').textContent = inr(diff);
+      $('resDiffNote').textContent = Math.abs(diff) < 0.005 ? 'Matches the bank' : diff > 0 ? 'Bank received more than Net Amount' : 'Bank received less than Net Amount';
+    }
+  }
+
+  function typeSelect(app, i) {
+    const cur = TYPES.includes(types[app]) ? types[app] : TYPES[0];
+    return `<select id="type-${i}" data-app="${esc(app)}" aria-label="Type for ${esc(app)}">` +
+      TYPES.map((t) => `<option${t === cur ? ' selected' : ''}>${t}</option>`).join('') + '</select>';
+  }
+
+  function show(msg, isError) {
+    $('msg').hidden = !msg;
+    $('msg').textContent = msg || '';
+    $('msg').classList.toggle('error', !!isError);
+  }
+
+  function render(buffer, name) {
+    let records;
+    try {
+      records = RA.parseWorkbook(XLSX, XLSX.read(buffer, { type: 'array' })).records;
+    } catch (err) {
+      show(`Could not read “${name}”. The sheet needs a Date column, an App column and a revenue column.`, true);
+      return;
+    }
+    const m = RA.compute(records, {});
+    fileTotals = new Map(m.apps.map((a) => [a.name, a.total]));
+    $('fileName').textContent = name;
+    $('rows').innerHTML = m.apps.map((a, i) =>
+      `<tr data-app="${esc(a.name)}"><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${amountInput(a.name, i)}</td><td class="net" id="net-${i}">${money(net(valueFor(a.name)))}</td><td class="net inr-cell" data-app="${esc(a.name)}" title="After 10% deduction × USD Rate"></td><td class="net ivt-cell" data-app="${esc(a.name)}" title="App revenue ÷ total revenue of all apps × Other/AdX Invalid Traffic"></td><td class="net tds-cell" data-app="${esc(a.name)}" title="App revenue ÷ total revenue of all apps × TDS"></td><td class="netinr-cell" title="INR − invalid traffic share − TDS share"></td></tr>`).join('');
+    updateFooter();
+    show('');
+    $('tablePanel').hidden = false;
+    $('clearAll').hidden = false;
+  }
+
+  function clearAll() {
+    edits = {}; saveEdits(); fileTotals = new Map();
+    extras = {}; saveExtras(); fillExtras(); $('netInr').value = '';
+    $('rows').innerHTML = '';
+    $('footTotal').textContent = '';
+    $('footNet').textContent = '';
+    $('footInr').textContent = '';
+    $('footIvt').textContent = '';
+    $('footTds').textContent = '';
+    $('footNetInr').textContent = '';
+    $('tablePanel').hidden = true;
+    $('clearAll').hidden = true;
+    $('fileName').textContent = 'No file loaded';
+    Object.assign(calc, { gameCompany: null, gamePersonal: null, bankDiff: null });
+    renderTotalCalc();
+    show('Cleared. Upload an Excel file to see the total revenue for every app.');
+  }
+
+  // Total calculation: Company and Personal profit, the Company fund, and each person's share.
+  // Company: revenue = Game Ad Zoon Company apps + AdMob Company (INR); profit = revenue − Company marketing.
+  //   Company fund = profit × fund % + the "Company" person's marketing + (Bank Amount − Net Amount).
+  //   Jenin, Meet, Keyur = (profit − profit × fund %) ÷ 3 + their own Company marketing.
+  // Personal: revenue = Game Ad Zoon Personal apps + AdMob Personal (INR); profit = revenue − Personal marketing.
+  //   Jenin, Meet = profit ÷ 2 + their own Personal marketing.
+  const FUND_KEY = 'appRevenue.fundPct';
+  const DEFAULT_FUND = 40;
+  try { $('fundPct').value = localStorage.getItem(FUND_KEY) || String(DEFAULT_FUND); } catch (e) { $('fundPct').value = String(DEFAULT_FUND); }
+  $('fundPct').addEventListener('input', (e) => {
+    try { localStorage.setItem(FUND_KEY, e.target.value); } catch (err) { /* storage unavailable */ }
+    renderTotalCalc();
+  });
+
+  function fundPercent() {
+    const raw = $('fundPct').value.trim();
+    const v = raw === '' ? DEFAULT_FUND : RA.parseAmount(raw);
+    const ok = v !== null && v >= 0 && v <= 100;
+    $('fundPct').classList.toggle('invalid', !ok);
+    return ok ? { pct: v, ok } : { pct: DEFAULT_FUND, ok };
+  }
+
+  const calcRow = (op, label, value, note, cls) =>
+    `<tr class="${cls || ''}"><td class="op">${op}</td><td>${label}${note ? `<small>${note}</small>` : ''}</td><td>${value === null ? '—' : inr(value)}</td></tr>`;
+  const calcCard = (label, value, note, strong) =>
+    `<div class="result${strong ? ' diff' : ''}"><span>${label}</span><strong>${inr(value)}</strong><small>${note}</small></div>`;
+  const orZero = (v) => (v === null ? 0 : v);
+  function warn(id, missing) {
+    $(id).hidden = !missing.length;
+    $(id).textContent = missing.length ? `Counted as ₹0 until entered: ${missing.join('; ')}.` : '';
+  }
+
+  function renderTotalCalc() {
+    if (!calc.mkt) return; // Marketing has not been read yet.
+    const m = calc.mkt;
+    const pm = (dept, person) => orZero(m[dept].people[person]);
+
+    // Company
+    const { pct, ok } = fundPercent();
+    const cRevenue = paise(orZero(calc.gameCompany) + orZero(calc.admobCompany));
+    const cProfit = paise(cRevenue - m.Company.total);
+    const fundShare = paise(cProfit * pct / 100);
+    const bankDiff = orZero(calc.bankDiff);
+    const fund = paise(fundShare + pm('Company', 'Company') + bankDiff);
+    const remaining = paise(cProfit - fundShare);
+    const each = remaining / 3;
+    const missingC = [];
+    if (calc.gameCompany === null) missingC.push('Game Ad Zoon USD Rate');
+    if (calc.admobCompany === null) missingC.push('Google AdMob USD Rate');
+    if (calc.bankDiff === null) missingC.push('Game Ad Zoon Bank Amount');
+    warn('calcCompanyWarn', missingC);
+    $('calcCompanyTable').innerHTML =
+      calcRow('', 'Game Ad Zoon', calc.gameCompany, 'Company apps total (Net Amount INR)') +
+      calcRow('+', 'Google AdMob', calc.admobCompany, 'Company (INR), after tax') +
+      calcRow('=', 'Company total revenue', cRevenue, '', 'sub') +
+      calcRow('−', 'Company total marketing', m.Company.total, 'Marketing › Company total') +
+      calcRow('=', 'Company profit', cProfit, '', 'sub') +
+      calcRow('', `Company fund share (${pct}% of profit)`, fundShare, ok ? '' : `Enter a % from 0 to 100. Using ${DEFAULT_FUND}% for now.`) +
+      calcRow('', `Remaining profit (${paise(100 - pct)}%)`, remaining, 'Split equally between Jenin, Meet and Keyur');
+    $('calcCompanyCards').innerHTML =
+      calcCard('Company fund', fund, `${pct}% of profit ${inr(fundShare)}<br>+ Company marketing ${inr(pm('Company', 'Company'))}<br>+ Bank − Net ${calc.bankDiff === null ? '—' : inr(bankDiff)}`, true) +
+      ['Jenin', 'Meet', 'Keyur'].map((p) => calcCard(p, paise(each + pm('Company', p)),
+        `Profit ÷ 3 ${inr(paise(each))}<br>+ marketing ${inr(pm('Company', p))}`)).join('');
+
+    // Personal
+    const pRevenue = paise(orZero(calc.gamePersonal) + orZero(calc.admobPersonal));
+    const pProfit = paise(pRevenue - m.Personal.total);
+    const half = pProfit / 2;
+    const missingP = [];
+    if (calc.gamePersonal === null) missingP.push('Game Ad Zoon USD Rate');
+    if (calc.admobPersonal === null) missingP.push('Google AdMob USD Rate');
+    warn('calcPersonalWarn', missingP);
+    $('calcPersonalTable').innerHTML =
+      calcRow('', 'Game Ad Zoon', calc.gamePersonal, 'Personal apps total (Net Amount INR)') +
+      calcRow('+', 'Google AdMob', calc.admobPersonal, 'Personal (INR), after tax') +
+      calcRow('=', 'Personal total revenue', pRevenue, '', 'sub') +
+      calcRow('−', 'Personal total marketing', m.Personal.total, 'Marketing › Personal total') +
+      calcRow('=', 'Personal profit', pProfit, 'Split equally between Jenin and Meet', 'sub');
+    $('calcPersonalCards').innerHTML = ['Jenin', 'Meet'].map((p) => calcCard(p, paise(half + pm('Personal', p)),
+      `Profit ÷ 2 ${inr(paise(half))}<br>+ marketing ${inr(pm('Personal', p))}`)).join('');
+  }
+
+  // Marketing: two departments. Each Add opens a popup for an app name and each person's marketing (INR);
+  // Done adds the app as a row with its total. Rows are remembered in this browser.
+  const DEPTS = [
+    { name: 'Company', people: ['Jenin', 'Meet', 'Keyur', 'Company'] },
+    { name: 'Personal', people: ['Jenin', 'Meet'] },
+  ];
+  const MKT_KEY = 'appRevenue.marketing';
+  let mkt = {};
+  try { mkt = JSON.parse(localStorage.getItem(MKT_KEY)) || {}; } catch (e) { mkt = {}; }
+  DEPTS.forEach((d) => { if (!Array.isArray(mkt[d.name])) mkt[d.name] = []; });
+  const saveMkt = () => { try { localStorage.setItem(MKT_KEY, JSON.stringify(mkt)); } catch (e) { /* storage unavailable */ } };
+  const rowTotal = (row, dept) => paise(RA.sum(dept.people.map((p) => row.amounts[p] || 0)));
+
+  function renderMarketing() {
+    $('mktGrid').innerHTML = DEPTS.map((d, di) => {
+      const rows = mkt[d.name];
+      const body = rows.length ? rows.map((r, ri) => `<tr><td>${esc(r.app)}</td>${d.people.map((p) => `<td>${inr(r.amounts[p] || 0)}</td>`).join('')}
+        <td><strong>${inr(rowTotal(r, d))}</strong><button type="button" class="row-del" data-dept="${di}" data-row="${ri}" aria-label="Remove ${esc(r.app)}" title="Remove">×</button></td></tr>`).join('')
+        : `<tr class="empty-row"><td colspan="${d.people.length + 2}">No apps yet. Click Add to enter an app's marketing.</td></tr>`;
+      const colTotals = d.people.map((p) => inr(paise(RA.sum(rows.map((r) => r.amounts[p] || 0)))));
+      return `<div class="panel">
+        <div class="mkt-head"><h3>${d.name}</h3><button type="button" class="btn small" data-add="${di}">+ Add</button></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>App name</th>${d.people.map((p) => `<th>${p}</th>`).join('')}<th>Total</th></tr></thead>
+          <tbody>${body}</tbody>
+          <tfoot><tr><td>${d.name} total</td>${colTotals.map((t) => `<td>${t}</td>`).join('')}<td>${inr(paise(RA.sum(rows.map((r) => rowTotal(r, d)))))}</td></tr></tfoot>
+        </table></div>
+      </div>`;
+    }).join('');
+    renderMarketingSummary();
+  }
+
+  // Summary under both departments: each person's marketing across Company and Personal, and the overall total.
+  function renderMarketingSummary() {
+    const people = [...new Set(DEPTS.flatMap((d) => d.people))];
+    const deptSum = (d, person) => (d.people.includes(person) ? paise(RA.sum(mkt[d.name].map((r) => r.amounts[person] || 0))) : null);
+    const cards = people.map((person) => {
+      const parts = DEPTS.map((d) => [d.name, deptSum(d, person)]).filter(([, v]) => v !== null);
+      const total = paise(RA.sum(parts.map(([, v]) => v)));
+      return `<div class="result"><span>${esc(person)}</span><strong>${inr(total)}</strong><small>${parts.map(([n, v]) => `${n} ${inr(v)}`).join('<br>')}</small></div>`;
+    });
+    const deptTotals = DEPTS.map((d) => [d.name, paise(RA.sum(mkt[d.name].map((r) => rowTotal(r, d))))]);
+    cards.push(`<div class="result diff"><span>All marketing</span><strong>${inr(paise(RA.sum(deptTotals.map(([, v]) => v))))}</strong><small>${deptTotals.map(([n, v]) => `${n} ${inr(v)}`).join('<br>')}</small></div>`);
+    $('mktSummary').innerHTML = cards.join('');
+    calc.mkt = Object.fromEntries(DEPTS.map((d) => [d.name, {
+      total: paise(RA.sum(mkt[d.name].map((r) => rowTotal(r, d)))),
+      people: Object.fromEntries(d.people.map((p) => [p, deptSum(d, p)])),
+    }]));
+    renderTotalCalc();
+  }
+
+  let mktDept = 0, mktOpener = null;
+  function openMkt(di, opener) {
+    mktDept = di; mktOpener = opener;
+    const d = DEPTS[di];
+    $('mktModalTitle').textContent = `Add ${d.name} marketing`;
+    $('mktApp').value = '';
+    $('mktPeople').innerHTML = d.people.map((p, pi) => `<label for="mkt-p-${pi}"><span>${p}</span><span class="inr"><input id="mkt-p-${pi}" data-person="${p}" inputmode="decimal" autocomplete="off" placeholder="0.00"></span></label>`).join('');
+    $('mktError').hidden = true;
+    $('mktApp').classList.remove('invalid');
+    updateMktModalTotal();
+    $('mktModal').hidden = false;
+    $('mktApp').focus();
+  }
+  function closeMkt() {
+    $('mktModal').hidden = true;
+    if (mktOpener) mktOpener.focus();
+  }
+  function updateMktModalTotal() {
+    const vals = [...$('mktPeople').querySelectorAll('input')].map((i) => RA.parseAmount(i.value) || 0);
+    $('mktModalTotal').textContent = inr(paise(RA.sum(vals)));
+  }
+  $('mktPeople').addEventListener('input', (e) => {
+    e.target.classList.toggle('invalid', e.target.value.trim() !== '' && RA.parseAmount(e.target.value) === null);
+    updateMktModalTotal();
+  });
+  $('mktGrid').addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (add) { openMkt(Number(add.dataset.add), add); return; }
+    const del = e.target.closest('.row-del');
+    if (del) {
+      mkt[DEPTS[Number(del.dataset.dept)].name].splice(Number(del.dataset.row), 1);
+      saveMkt(); renderMarketing();
+    }
+  });
+  $('mktForm').addEventListener('input', () => { $('mktError').hidden = true; $('mktApp').classList.remove('invalid'); });
+  $('mktCancel').addEventListener('click', closeMkt);
+  $('mktModal').addEventListener('click', (e) => { if (e.target === $('mktModal')) closeMkt(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('mktModal').hidden) closeMkt(); });
+  $('mktForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const app = $('mktApp').value.trim();
+    const inputs = [...$('mktPeople').querySelectorAll('input')];
+    const bad = inputs.filter((i) => i.value.trim() !== '' && RA.parseAmount(i.value) === null);
+    let error = '';
+    if (!app) error = 'Enter the app name.';
+    else if (bad.length) error = 'Amounts must be numbers. Fix the boxes marked in red.';
+    $('mktApp').classList.toggle('invalid', !app);
+    $('mktError').textContent = error;
+    $('mktError').hidden = !error;
+    if (error) { (app ? bad[0] : $('mktApp')).focus(); return; }
+    const amounts = {};
+    inputs.forEach((i) => { amounts[i.dataset.person] = paise(RA.parseAmount(i.value) || 0); });
+    mkt[DEPTS[mktDept].name].push({ app, amounts });
+    saveMkt();
+    renderMarketing();
+    closeMkt();
+  });
+  renderMarketing();
+
+  // Google AdMob accounts: amounts typed per account, remembered in this browser.
+  // Kept separate from the Excel data, so Upload Excel and Clear all leave it alone.
+  const ADMOB_ACCOUNTS = ['Aneri Beladiya', 'Ashokbhai Bhikadiya', 'Keyur Bhikadiya', 'Meet Vaghasiya', 'Devkurben Sutariya', 'Jenin Sutariya'];
+  const ADMOB_COLS = [
+    { key: 'appRevenue.admob', label: 'Revenue', total: 'admobTotal' },
+    { key: 'appRevenue.admobCompany', label: 'Company', total: 'admobCompanyTotal' },
+    { key: 'appRevenue.admobPersonal', label: 'Personal', total: 'admobPersonalTotal' },
+    { key: 'appRevenue.admobTax', label: 'Tax Amount', total: 'admobTaxTotal', symbol: '₹' },
+  ];
+  const admobData = ADMOB_COLS.map((c) => { try { return JSON.parse(localStorage.getItem(c.key)) || {}; } catch (e) { return {}; } });
+  const saveAdmob = (ci) => { try { localStorage.setItem(ADMOB_COLS[ci].key, JSON.stringify(admobData[ci])); } catch (e) { /* storage unavailable */ } };
+  const isBad = (v) => (v || '').trim() !== '' && RA.parseAmount(v) === null;
+  function updateAdmobTotals() {
+    ADMOB_COLS.forEach((c, ci) => {
+      const sum = RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[ci][a] || '') || 0));
+      $(c.total).textContent = c.symbol === '₹' ? inr(sum) : money(sum);
+    });
+    updateAdmobInr();
+  }
+
+  // Company (INR) = Company × AdMob USD Rate − Company tax share, and the same for Personal. Shows a dash until a rate is entered.
+  const ADMOB_INR = [{ col: 1, cell: 'admob-cinr', total: 'admobCompanyInrTotal' }, { col: 2, cell: 'admob-pinr', total: 'admobPersonalInrTotal' }];
+  // Tax split: each account's Tax Amount is shared between Company and Personal by their dollar revenue,
+  // shown as small text under the INR amounts. Tax share = Tax × this side ÷ (Company + Personal).
+  function taxShares(a) {
+    const tax = RA.parseAmount(admobData[3][a] || '');
+    const c = RA.parseAmount(admobData[1][a] || '') || 0;
+    const p = RA.parseAmount(admobData[2][a] || '') || 0;
+    if (tax === null) return [null, null];
+    if (c + p <= 0) return ['unsplit', 'unsplit'];
+    const cTax = paise(tax * c / (c + p));
+    return [cTax, paise(tax - cTax)];
+  }
+  const taxLine = (v) => (v === null ? '' : v === 'unsplit'
+    ? '<small class="tax-line" title="Enter a Company or Personal amount to split this tax">Tax not split</small>'
+    : `<small class="tax-line">Tax −${inr(v)}</small>`);
+
+  function updateAdmobInr() {
+    const r = RA.parseAmount($('admobUsdRate').value);
+    const rate = r !== null && r > 0 ? r : null;
+    const shares = ADMOB_ACCOUNTS.map(taxShares);
+    const sideTotals = [], sideTaxes = [];
+    ADMOB_INR.forEach(({ col, cell, total }, side) => {
+      const values = ADMOB_ACCOUNTS.map((a, i) => {
+        const usd = RA.parseAmount(admobData[col][a] || '');
+        // After tax: dollars × USD Rate, minus this side's share of the account's Tax Amount.
+        const tax = typeof shares[i][side] === 'number' ? shares[i][side] : 0;
+        const v = rate === null ? null : paise(paise(usd || 0) * rate - tax);
+        $(`${cell}-${i}`).innerHTML = (v === null ? '—' : inr(v)) + taxLine(shares[i][side]);
+        return v;
+      });
+      const sideTax = shares.map((sh) => sh[side]).filter((v) => typeof v === 'number');
+      $(total).innerHTML = (rate === null ? '—' : inr(paise(RA.sum(values)))) + (sideTax.length ? taxLine(paise(RA.sum(sideTax))) : '');
+      sideTotals.push(rate === null ? null : paise(RA.sum(values)));
+      sideTaxes.push(paise(RA.sum(sideTax)));
+    });
+    renderAdmobResult(rate !== null, sideTotals, sideTaxes, shares.some((sh) => sh[0] === 'unsplit'));
+  }
+
+  // Google AdMob Result: totals of the table above. INR figures are after tax.
+  function renderAdmobResult(hasRate, [company, personal], [companyTax, personalTax], unsplit) {
+    calc.admobCompany = hasRate ? company : null;
+    calc.admobPersonal = hasRate ? personal : null;
+    renderTotalCalc();
+    $('admobResRevenue').textContent = money(RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[0][a] || '') || 0)));
+    const note = (tax) => (tax > 0 ? `After ${inr(tax)} tax` : 'No tax');
+    $('admobResCompany').textContent = hasRate ? inr(company) : '—';
+    $('admobResPersonal').textContent = hasRate ? inr(personal) : '—';
+    $('admobResTotal').textContent = hasRate ? inr(paise(company + personal)) : '—';
+    $('admobResCompanyNote').textContent = hasRate ? note(companyTax) : 'Enter the USD Rate';
+    $('admobResPersonalNote').textContent = hasRate ? note(personalTax) : 'Enter the USD Rate';
+    $('admobResTotalNote').textContent = !hasRate ? 'Enter the USD Rate'
+      : note(paise(companyTax + personalTax)) + (unsplit ? ' · some tax not split' : '');
+  }
+
+  $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>${ADMOB_COLS.map((c, ci) => {
+    const v = admobData[ci][a] || '';
+    return `<td class="right"><span class="amount">${c.symbol || '$'}<input id="admob-${ci}-${i}" data-account="${esc(a)}" data-col="${ci}" inputmode="decimal" autocomplete="off"
+      placeholder="0.00" class="${isBad(v) ? 'invalid' : ''}" value="${esc(v)}" aria-label="${c.label} for ${esc(a)}"></span></td>`;
+  }).join('')}<td class="right net" id="admob-cinr-${i}" title="Company × USD Rate − Company share of Tax Amount"></td><td class="right net" id="admob-pinr-${i}" title="Personal × USD Rate − Personal share of Tax Amount"></td></tr>`).join('');
+  // Google AdMob USD Rate, remembered in this browser (separate from the app section's USD Rate).
+  const ADMOB_RATE_KEY = 'appRevenue.admobUsdRate';
+  try { $('admobUsdRate').value = localStorage.getItem(ADMOB_RATE_KEY) || ''; } catch (e) { /* storage unavailable */ }
+  updateAdmobTotals();
+  $('admobUsdRate').addEventListener('input', (e) => {
+    try { localStorage.setItem(ADMOB_RATE_KEY, e.target.value); } catch (err) { /* storage unavailable */ }
+    updateAdmobInr();
+  });
+
+  // Company and Personal fill each other in: whichever one was typed last is kept,
+  // and the other becomes Revenue minus it. Changing Revenue recalculates the filled-in one.
+  const LAST_KEY = 'appRevenue.admobLastTyped';
+  let lastTyped = {};
+  try { lastTyped = JSON.parse(localStorage.getItem(LAST_KEY)) || {}; } catch (e) { lastTyped = {}; }
+  const saveLastTyped = () => { try { localStorage.setItem(LAST_KEY, JSON.stringify(lastTyped)); } catch (e) { /* storage unavailable */ } };
+  function autoFill(account, i) {
+    const typed = lastTyped[account];            // 1 = Company, 2 = Personal
+    if (typed !== 1 && typed !== 2) return;
+    const other = typed === 1 ? 2 : 1;
+    const typedValue = RA.parseAmount(admobData[typed][account] || '');
+    const otherBox = $(`admob-${other}-${i}`);
+    let value = '';
+    if (typedValue !== null) value = (Math.round(((RA.parseAmount(admobData[0][account] || '') || 0) - typedValue) * 100) / 100).toFixed(2);
+    admobData[other][account] = value;
+    otherBox.value = value;
+    // A negative result means the typed amount is bigger than Revenue.
+    otherBox.classList.toggle('invalid', value !== '' && Number(value) < 0);
+    otherBox.title = value !== '' && Number(value) < 0 ? 'Bigger than Revenue: check the amounts' : 'Filled in automatically: Revenue − ' + (typed === 1 ? 'Company' : 'Personal');
+    otherBox.classList.add('auto');
+    $(`admob-${typed}-${i}`).classList.remove('auto');
+    $(`admob-${typed}-${i}`).title = '';
+    saveAdmob(other);
+  }
+  ADMOB_ACCOUNTS.forEach((a, i) => {
+    const typed = lastTyped[a];
+    if (typed === 1 || typed === 2) $(`admob-${typed === 1 ? 2 : 1}-${i}`).classList.add('auto');
+  });
+
+  $('admobRows').addEventListener('input', (e) => {
+    const box = e.target;
+    if (!box.matches('input[data-account]')) return;
+    box.classList.toggle('invalid', isBad(box.value));
+    const ci = Number(box.dataset.col);
+    const account = box.dataset.account;
+    const i = ADMOB_ACCOUNTS.indexOf(account);
+    admobData[ci][account] = box.value;
+    saveAdmob(ci);
+    if (ci === 1 || ci === 2) { lastTyped[account] = ci; saveLastTyped(); }
+    autoFill(account, i);
+    updateAdmobTotals();
+  });
+
+  // The four boxes under the table, remembered in this browser until Clear all.
+  const EXTRA_KEY = 'appRevenue.extras';
+  const EXTRA_IDS = ['usdRate', 'invalidTraffic', 'tds', 'bankAmount'];
+  let extras = {};
+  try { extras = JSON.parse(localStorage.getItem(EXTRA_KEY)) || {}; } catch (e) { extras = {}; }
+  function saveExtras() { try { localStorage.setItem(EXTRA_KEY, JSON.stringify(extras)); } catch (e) { /* storage unavailable */ } }
+  function fillExtras() { EXTRA_IDS.forEach((id) => { $(id).value = extras[id] || ''; }); }
+  fillExtras();
+  $('extras').addEventListener('input', (e) => {
+    if (!EXTRA_IDS.includes(e.target.id)) return;
+    extras[e.target.id] = e.target.value;
+    saveExtras();
+    if (['usdRate', 'invalidTraffic', 'tds', 'bankAmount'].includes(e.target.id)) updateFooter();
+  });
+
+  $('clearAll').addEventListener('click', clearAll);
+  $('rows').addEventListener('change', (e) => {
+    if (e.target.matches('select[data-app]')) { types[e.target.dataset.app] = e.target.value; saveTypes(); updateFooter(); }
+  });
+  $('rows').addEventListener('input', (e) => {
+    const box = e.target;
+    if (!box.matches('input[data-app]')) return;
+    const app = box.dataset.app;
+    const v = box.value.trim() === '' ? null : RA.parseAmount(box.value);
+    box.classList.toggle('invalid', box.value.trim() !== '' && v === null);
+    if (box.value.trim() === '') delete edits[app];
+    else if (v !== null) edits[app] = v;
+    box.classList.toggle('edited', Number.isFinite(edits[app]));
+    saveEdits();
+    box.closest('tr').querySelector('.net').textContent = money(net(valueFor(app)));
+    updateFooter();
+  });
+  // Tidy the box when leaving it: an empty box goes back to the file's value.
+  $('rows').addEventListener('focusout', (e) => {
+    const box = e.target;
+    if (!box.matches('input[data-app]')) return;
+    box.classList.remove('invalid');
+    box.value = plain(valueFor(box.dataset.app));
+    box.closest('tr').querySelector('.net').textContent = money(net(valueFor(box.dataset.app)));
+  });
+
+  $('fileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) { edits = {}; saveEdits(); file.arrayBuffer().then((buf) => render(buf, file.name)); }
+    e.target.value = '';
+  });
+
+  fetch(DEFAULT_FILE, { cache: 'no-store' })
+    .then((r) => { if (!r.ok) throw new Error(); return r.arrayBuffer(); })
+    .then((buf) => render(buf, DEFAULT_FILE.split('/').pop()))
+    .catch(() => { $('fileName').textContent = 'No file loaded'; show('Upload an Excel file to see the total revenue for every app.'); });
+})();
+</script>
+</body>
+</html>
