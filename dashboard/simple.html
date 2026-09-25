@@ -167,6 +167,15 @@ th.right, td.right { text-align: right; }
     <div class="extras">
       <label for="admobUsdRate"><span>USD Rate</span><span class="inr"><input id="admobUsdRate" inputmode="decimal" autocomplete="off"></span></label>
     </div>
+    <div class="results">
+      <h3>Result</h3>
+      <div class="result-grid">
+        <div class="result"><span>Total revenue</span><strong id="admobResRevenue">—</strong><small>All accounts, in dollars</small></div>
+        <div class="result"><span>Company (INR)</span><strong id="admobResCompany">—</strong><small id="admobResCompanyNote"></small></div>
+        <div class="result"><span>Personal (INR)</span><strong id="admobResPersonal">—</strong><small id="admobResPersonalNote"></small></div>
+        <div class="result diff"><span>Total (INR)</span><strong id="admobResTotal">—</strong><small id="admobResTotalNote"></small></div>
+      </div>
+    </div>
   </section>
 </div>
 
@@ -368,6 +377,7 @@ th.right, td.right { text-align: right; }
     const r = RA.parseAmount($('admobUsdRate').value);
     const rate = r !== null && r > 0 ? r : null;
     const shares = ADMOB_ACCOUNTS.map(taxShares);
+    const sideTotals = [], sideTaxes = [];
     ADMOB_INR.forEach(({ col, cell, total }, side) => {
       const values = ADMOB_ACCOUNTS.map((a, i) => {
         const usd = RA.parseAmount(admobData[col][a] || '');
@@ -379,7 +389,23 @@ th.right, td.right { text-align: right; }
       });
       const sideTax = shares.map((sh) => sh[side]).filter((v) => typeof v === 'number');
       $(total).innerHTML = (rate === null ? '—' : inr(paise(RA.sum(values)))) + (sideTax.length ? taxLine(paise(RA.sum(sideTax))) : '');
+      sideTotals.push(rate === null ? null : paise(RA.sum(values)));
+      sideTaxes.push(paise(RA.sum(sideTax)));
     });
+    renderAdmobResult(rate !== null, sideTotals, sideTaxes, shares.some((sh) => sh[0] === 'unsplit'));
+  }
+
+  // Google AdMob Result: totals of the table above. INR figures are after tax.
+  function renderAdmobResult(hasRate, [company, personal], [companyTax, personalTax], unsplit) {
+    $('admobResRevenue').textContent = money(RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[0][a] || '') || 0)));
+    const note = (tax) => (tax > 0 ? `After ${inr(tax)} tax` : 'No tax');
+    $('admobResCompany').textContent = hasRate ? inr(company) : '—';
+    $('admobResPersonal').textContent = hasRate ? inr(personal) : '—';
+    $('admobResTotal').textContent = hasRate ? inr(paise(company + personal)) : '—';
+    $('admobResCompanyNote').textContent = hasRate ? note(companyTax) : 'Enter the USD Rate';
+    $('admobResPersonalNote').textContent = hasRate ? note(personalTax) : 'Enter the USD Rate';
+    $('admobResTotalNote').textContent = !hasRate ? 'Enter the USD Rate'
+      : note(paise(companyTax + personalTax)) + (unsplit ? ' · some tax not split' : '');
   }
 
   $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>${ADMOB_COLS.map((c, ci) => {
