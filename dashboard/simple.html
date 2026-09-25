@@ -107,8 +107,8 @@ th.right, td.right { text-align: right; }
 @media (max-width: 420px) { .result-grid { grid-template-columns: minmax(0, 1fr); } }
 .mkt { display: grid; gap: 16px; }
 .mkt > h2 { font-size: clamp(17px, 1.5vw, 22px); }
-.mkt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-@media (max-width: 900px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+@media (max-width: 1200px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
 .mkt-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px clamp(16px, 2vw, 24px); }
 .mkt-head h3 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; font-size: clamp(16px, 1.3vw, 19px); }
 .btn.small { height: 34px; padding: 0 12px; font: inherit; font-weight: 600; font-size: 14px; border: 0; }
@@ -384,7 +384,7 @@ th.right, td.right { text-align: right; }
   // Marketing: two departments. Each Add opens a popup for an app name and each person's marketing (INR);
   // Done adds the app as a row with its total. Rows are remembered in this browser.
   const DEPTS = [
-    { name: 'Company', people: ['Jenin', 'Meet', 'Keyur'] },
+    { name: 'Company', people: ['Jenin', 'Meet', 'Keyur', 'Company'] },
     { name: 'Personal', people: ['Jenin', 'Meet'] },
   ];
   const MKT_KEY = 'appRevenue.marketing';
