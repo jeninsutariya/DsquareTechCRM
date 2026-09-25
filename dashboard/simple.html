@@ -163,6 +163,9 @@ th.right, td.right { text-align: right; }
         <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td><td class="right" id="admobCompanyTotal"></td><td class="right" id="admobPersonalTotal"></td></tr></tfoot>
       </table>
     </div>
+    <div class="extras">
+      <label for="admobUsdRate"><span>USD Rate</span><span class="inr"><input id="admobUsdRate" inputmode="decimal" autocomplete="off"></span></label>
+    </div>
   </section>
 </div>
 
@@ -345,6 +348,13 @@ th.right, td.right { text-align: right; }
       placeholder="0.00" class="${isBad(v) ? 'invalid' : ''}" value="${esc(v)}" aria-label="${c.label} for ${esc(a)}"></span></td>`;
   }).join('')}</tr>`).join('');
   updateAdmobTotals();
+  // Google AdMob USD Rate, remembered in this browser (separate from the app section's USD Rate).
+  const ADMOB_RATE_KEY = 'appRevenue.admobUsdRate';
+  try { $('admobUsdRate').value = localStorage.getItem(ADMOB_RATE_KEY) || ''; } catch (e) { /* storage unavailable */ }
+  $('admobUsdRate').addEventListener('input', (e) => {
+    try { localStorage.setItem(ADMOB_RATE_KEY, e.target.value); } catch (err) { /* storage unavailable */ }
+  });
+
   // Company and Personal fill each other in: whichever one was typed last is kept,
   // and the other becomes Revenue minus it. Changing Revenue recalculates the filled-in one.
   const LAST_KEY = 'appRevenue.admobLastTyped';
