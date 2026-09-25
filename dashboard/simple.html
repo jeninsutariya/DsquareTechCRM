@@ -101,6 +101,7 @@ th.right, td.right { text-align: right; }
 .result span { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
 .result strong { font-size: clamp(18px, 1.6vw, 24px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .result small { color: var(--muted); font-size: 12.5px; }
+.tax-line { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .result.diff { background: var(--surface); border-color: var(--line-strong); }
 @media (max-width: 1100px) { .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .result-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -348,19 +349,37 @@ th.right, td.right { text-align: right; }
 
   // Company (INR) = Company × AdMob USD Rate, and the same for Personal. Shows a dash until a rate is entered.
   const ADMOB_INR = [{ col: 1, cell: 'admob-cinr', total: 'admobCompanyInrTotal' }, { col: 2, cell: 'admob-pinr', total: 'admobPersonalInrTotal' }];
+  // Tax split: each account's Tax Amount is shared between Company and Personal by their dollar revenue,
+  // shown as small text under the INR amounts. Tax share = Tax × this side ÷ (Company + Personal).
+  function taxShares(a) {
+    const tax = RA.parseAmount(admobData[3][a] || '');
+    const c = RA.parseAmount(admobData[1][a] || '') || 0;
+    const p = RA.parseAmount(admobData[2][a] || '') || 0;
+    if (tax === null) return [null, null];
+    if (c + p <= 0) return ['unsplit', 'unsplit'];
+    const cTax = paise(tax * c / (c + p));
+    return [cTax, paise(tax - cTax)];
+  }
+  const taxLine = (v) => (v === null ? '' : v === 'unsplit'
+    ? '<small class="tax-line" title="Enter a Company or Personal amount to split this tax">Tax not split</small>'
+    : `<small class="tax-line">Tax ${inr(v)}</small>`);
+
   function updateAdmobInr() {
     const r = RA.parseAmount($('admobUsdRate').value);
     const rate = r !== null && r > 0 ? r : null;
-    ADMOB_INR.forEach(({ col, cell, total }) => {
+    const shares = ADMOB_ACCOUNTS.map(taxShares);
+    ADMOB_INR.forEach(({ col, cell, total }, side) => {
       const values = ADMOB_ACCOUNTS.map((a, i) => {
         const usd = RA.parseAmount(admobData[col][a] || '');
         const v = rate === null ? null : paise(paise(usd || 0) * rate);
-        $(`${cell}-${i}`).textContent = v === null ? '—' : inr(v);
+        $(`${cell}-${i}`).innerHTML = (v === null ? '—' : inr(v)) + taxLine(shares[i][side]);
         return v;
       });
-      $(total).textContent = rate === null ? '—' : inr(paise(RA.sum(values)));
+      const sideTax = shares.map((sh) => sh[side]).filter((v) => typeof v === 'number');
+      $(total).innerHTML = (rate === null ? '—' : inr(paise(RA.sum(values)))) + (sideTax.length ? taxLine(paise(RA.sum(sideTax))) : '');
     });
   }
+
   $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>${ADMOB_COLS.map((c, ci) => {
     const v = admobData[ci][a] || '';
     return `<td class="right"><span class="amount">${c.symbol || '$'}<input id="admob-${ci}-${i}" data-account="${esc(a)}" data-col="${ci}" inputmode="decimal" autocomplete="off"
