@@ -347,7 +347,7 @@ th.right, td.right { text-align: right; }
     updateAdmobInr();
   }
 
-  // Company (INR) = Company × AdMob USD Rate, and the same for Personal. Shows a dash until a rate is entered.
+  // Company (INR) = Company × AdMob USD Rate − Company tax share, and the same for Personal. Shows a dash until a rate is entered.
   const ADMOB_INR = [{ col: 1, cell: 'admob-cinr', total: 'admobCompanyInrTotal' }, { col: 2, cell: 'admob-pinr', total: 'admobPersonalInrTotal' }];
   // Tax split: each account's Tax Amount is shared between Company and Personal by their dollar revenue,
   // shown as small text under the INR amounts. Tax share = Tax × this side ÷ (Company + Personal).
@@ -362,7 +362,7 @@ th.right, td.right { text-align: right; }
   }
   const taxLine = (v) => (v === null ? '' : v === 'unsplit'
     ? '<small class="tax-line" title="Enter a Company or Personal amount to split this tax">Tax not split</small>'
-    : `<small class="tax-line">Tax ${inr(v)}</small>`);
+    : `<small class="tax-line">Tax −${inr(v)}</small>`);
 
   function updateAdmobInr() {
     const r = RA.parseAmount($('admobUsdRate').value);
@@ -371,7 +371,9 @@ th.right, td.right { text-align: right; }
     ADMOB_INR.forEach(({ col, cell, total }, side) => {
       const values = ADMOB_ACCOUNTS.map((a, i) => {
         const usd = RA.parseAmount(admobData[col][a] || '');
-        const v = rate === null ? null : paise(paise(usd || 0) * rate);
+        // After tax: dollars × USD Rate, minus this side's share of the account's Tax Amount.
+        const tax = typeof shares[i][side] === 'number' ? shares[i][side] : 0;
+        const v = rate === null ? null : paise(paise(usd || 0) * rate - tax);
         $(`${cell}-${i}`).innerHTML = (v === null ? '—' : inr(v)) + taxLine(shares[i][side]);
         return v;
       });
@@ -384,7 +386,7 @@ th.right, td.right { text-align: right; }
     const v = admobData[ci][a] || '';
     return `<td class="right"><span class="amount">${c.symbol || '$'}<input id="admob-${ci}-${i}" data-account="${esc(a)}" data-col="${ci}" inputmode="decimal" autocomplete="off"
       placeholder="0.00" class="${isBad(v) ? 'invalid' : ''}" value="${esc(v)}" aria-label="${c.label} for ${esc(a)}"></span></td>`;
-  }).join('')}<td class="right net" id="admob-cinr-${i}" title="Company × USD Rate"></td><td class="right net" id="admob-pinr-${i}" title="Personal × USD Rate"></td></tr>`).join('');
+  }).join('')}<td class="right net" id="admob-cinr-${i}" title="Company × USD Rate − Company share of Tax Amount"></td><td class="right net" id="admob-pinr-${i}" title="Personal × USD Rate − Personal share of Tax Amount"></td></tr>`).join('');
   // Google AdMob USD Rate, remembered in this browser (separate from the app section's USD Rate).
   const ADMOB_RATE_KEY = 'appRevenue.admobUsdRate';
   try { $('admobUsdRate').value = localStorage.getItem(ADMOB_RATE_KEY) || ''; } catch (e) { /* storage unavailable */ }
