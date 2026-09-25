@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>App Revenue Total</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Sans:wght@600;700&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f3f5f8; --surface: #ffffff; --surface-2: #f7f9fb;
+  --ink: #0f1b2d; --ink-2: #4a5568; --muted: #7a8494;
+  --line: #e2e6ec; --line-strong: #c9d0da;
+  --accent: #1d4f9c; --accent-ink: #ffffff;
+  --hero: #0f2a52; --hero-ink: #ffffff; --hero-muted: #a9bddb; --bad: #b42323;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0c1119; --surface: #141b26; --surface-2: #19212e;
+    --ink: #eef2f7; --ink-2: #b7c0cd; --muted: #8791a0;
+    --line: #243042; --line-strong: #34425a;
+    --accent: #6ea2f0; --accent-ink: #0c1119;
+    --hero: #1b3560; --hero-ink: #ffffff; --hero-muted: #a9bddb; --bad: #f07272;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0c1119; --surface: #141b26; --surface-2: #19212e;
+  --ink: #eef2f7; --ink-2: #b7c0cd; --muted: #8791a0;
+  --line: #243042; --line-strong: #34425a;
+  --accent: #6ea2f0; --accent-ink: #0c1119;
+  --hero: #1b3560; --hero-ink: #ffffff; --hero-muted: #a9bddb; --bad: #f07272;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font: 15px/1.5 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
+[hidden] { display: none !important; }
+h1, h2 { margin: 0; font-family: "Instrument Sans", "IBM Plex Sans", system-ui, sans-serif; }
+p { margin: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.shell { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 48px; display: grid; gap: 20px; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+h1 { font-size: 26px; }
+.file { color: var(--muted); font-size: 13px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn:hover { filter: brightness(1.08); }
+.btn svg { width: 16px; height: 16px; }
+
+.total { background: var(--hero); color: var(--hero-ink); border-radius: 14px; padding: 24px; display: grid; gap: 4px; }
+.total h2 { font: 500 14px "IBM Plex Sans", system-ui, sans-serif; color: var(--hero-muted); }
+.total .val { font-family: "Instrument Sans", system-ui, sans-serif; font-size: clamp(34px, 8vw, 48px); font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.total .sub { color: var(--hero-muted); font-size: 13px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.panel h2 { font-size: 17px; padding: 16px 16px 12px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 11px 16px; text-align: right; border-top: 1px solid var(--line); }
+th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
+thead th { background: var(--surface-2); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+tbody td:last-child { font-weight: 600; }
+tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid var(--line-strong); }
+.num { color: var(--muted); width: 1%; white-space: nowrap; }
+
+.msg { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 12px; padding: 24px; color: var(--ink-2); }
+.msg.error { color: var(--bad); border-color: var(--bad); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div>
+      <h1>App Revenue</h1>
+      <p class="file" id="fileName">Loading…</p>
+    </div>
+    <label class="btn" for="fileInput">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V2M4.5 5.5 8 2l3.5 3.5M2.5 10.5v3h11v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Upload Excel
+    </label>
+    <input id="fileInput" type="file" accept=".xlsx,.xls,.xlsm,.csv" hidden>
+  </header>
+
+  <p class="msg" id="msg" hidden></p>
+
+  <section class="total" id="totalCard" hidden>
+    <h2>Total revenue, all apps</h2>
+    <p class="val" id="total"></p>
+    <p class="sub" id="totalSub"></p>
+  </section>
+
+  <section class="panel" id="tablePanel" hidden>
+    <h2>Total revenue by app</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">#</th><th>App</th><th>Total revenue</th></tr></thead>
+        <tbody id="rows"></tbody>
+        <tfoot><tr><td></td><td>All apps</td><td id="footTotal"></td></tr></tfoot>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="analytics.js"></script>
+<script>
+(function () {
+  'use strict';
+  const RA = RevenueAnalytics;
+  const DEFAULT_FILE = 'data/revenue.xlsx';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = (n) => fmt.format(Number.isFinite(n) && Math.abs(n) >= 0.005 ? n : 0);
+  const fmtDate = (k) => RA.dateFromKey(k).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
+
+  function show(msg, isError) {
+    $('msg').hidden = !msg;
+    $('msg').textContent = msg || '';
+    $('msg').classList.toggle('error', !!isError);
+  }
+
+  function render(buffer, name) {
+    let records;
+    try {
+      records = RA.parseWorkbook(XLSX, XLSX.read(buffer, { type: 'array' })).records;
+    } catch (err) {
+      show(`Could not read “${name}”. The sheet needs a Date column, an App column and a revenue column.`, true);
+      return;
+    }
+    const m = RA.compute(records, {});
+    $('fileName').textContent = name;
+    $('total').textContent = money(m.kpis.total);
+    $('totalSub').textContent = `${m.apps.length} apps · ${fmtDate(m.bounds.min)} – ${fmtDate(m.bounds.max)}`;
+    $('rows').innerHTML = m.apps.map((a, i) =>
+      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td>${money(a.total)}</td></tr>`).join('');
+    $('footTotal').textContent = money(m.kpis.total);
+    show('');
+    $('totalCard').hidden = false;
+    $('tablePanel').hidden = false;
+  }
+
+  $('fileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) file.arrayBuffer().then((buf) => render(buf, file.name));
+    e.target.value = '';
+  });
+
+  fetch(DEFAULT_FILE, { cache: 'no-store' })
+    .then((r) => { if (!r.ok) throw new Error(); return r.arrayBuffer(); })
+    .then((buf) => render(buf, DEFAULT_FILE.split('/').pop()))
+    .catch(() => { $('fileName').textContent = 'No file loaded'; show('Upload an Excel file to see the total revenue for every app.'); });
+})();
+</script>
+</body>
+</html>

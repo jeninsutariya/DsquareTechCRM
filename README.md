@@ -24,6 +24,8 @@ file with **Load Excel file** or by dropping it on the page. If the page is open
 - Filters: date range, apps, month, year. Every card, table and chart recalculates when a filter changes.
 - App detail: totals, daily average, best and worst day, monthly revenue, trend chart, full day-wise history
 
+`dashboard/simple.html` is a one-screen version: the all-app total, an Upload Excel button, and a table of each app's total revenue.
+
 **Input format**
 
 Columns are detected by header name:
