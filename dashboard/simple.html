@@ -59,7 +59,9 @@ h1 { font-size: clamp(26px, 2.6vw, 36px); }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { padding: clamp(11px, 1.1vw, 16px) clamp(16px, 2vw, 28px); text-align: right; border-top: 1px solid var(--line); }
 tbody td, tfoot td { font-size: clamp(15px, 1.2vw, 18px); }
-th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
+th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
+.type { width: 1%; white-space: nowrap; }
+.type select { height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; cursor: pointer; }
 thead th { background: var(--surface-2); font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
 tbody td:last-child { font-weight: 600; }
 tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid var(--line-strong); }
@@ -92,9 +94,9 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     <h2>Total revenue by app</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">#</th><th>App</th><th>Total revenue</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>App</th><th class="type">Type</th><th>Total revenue</th></tr></thead>
         <tbody id="rows"></tbody>
-        <tfoot><tr><td></td><td>All apps</td><td id="footTotal"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>All apps</td><td></td><td id="footTotal"></td></tr></tfoot>
       </table>
     </div>
   </section>
@@ -111,6 +113,18 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const money = (n) => fmt.format(Number.isFinite(n) && Math.abs(n) >= 0.005 ? n : 0);
+
+  // Each app's type is remembered in this browser; Company is the default.
+  const TYPES = ['Company', 'Personal', 'Other'];
+  const TYPE_KEY = 'appRevenue.types';
+  let types = {};
+  try { types = JSON.parse(localStorage.getItem(TYPE_KEY)) || {}; } catch (e) { types = {}; }
+  const saveTypes = () => { try { localStorage.setItem(TYPE_KEY, JSON.stringify(types)); } catch (e) { /* storage unavailable */ } };
+  function typeSelect(app, i) {
+    const cur = TYPES.includes(types[app]) ? types[app] : TYPES[0];
+    return `<select id="type-${i}" data-app="${esc(app)}" aria-label="Type for ${esc(app)}">` +
+      TYPES.map((t) => `<option${t === cur ? ' selected' : ''}>${t}</option>`).join('') + '</select>';
+  }
 
   function show(msg, isError) {
     $('msg').hidden = !msg;
@@ -129,7 +143,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
     const m = RA.compute(records, {});
     $('fileName').textContent = name;
     $('rows').innerHTML = m.apps.map((a, i) =>
-      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td>${money(a.total)}</td></tr>`).join('');
+      `<tr><td class="num">${i + 1}</td><td>${esc(a.name)}</td><td class="type">${typeSelect(a.name, i)}</td><td>${money(a.total)}</td></tr>`).join('');
     $('footTotal').textContent = money(m.kpis.total);
     show('');
     $('tablePanel').hidden = false;
@@ -146,6 +160,9 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
   }
 
   $('clearAll').addEventListener('click', clearAll);
+  $('rows').addEventListener('change', (e) => {
+    if (e.target.matches('select[data-app]')) { types[e.target.dataset.app] = e.target.value; saveTypes(); }
+  });
 
   $('fileInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
