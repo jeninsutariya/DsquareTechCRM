@@ -72,6 +72,7 @@ tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid
 .num { color: var(--muted); width: 1%; white-space: nowrap; }
 th.right, td.right { text-align: right; }
 #admobRows td { font-weight: 400; }
+#admobRows input.auto:not(.invalid) { background: var(--surface-2); border-style: dashed; }
 .amount { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .amount input { width: 10ch; height: 36px; padding: 0 10px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px;
   background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -344,13 +345,46 @@ th.right, td.right { text-align: right; }
       placeholder="0.00" class="${isBad(v) ? 'invalid' : ''}" value="${esc(v)}" aria-label="${c.label} for ${esc(a)}"></span></td>`;
   }).join('')}</tr>`).join('');
   updateAdmobTotals();
+  // Company and Personal fill each other in: whichever one was typed last is kept,
+  // and the other becomes Revenue minus it. Changing Revenue recalculates the filled-in one.
+  const LAST_KEY = 'appRevenue.admobLastTyped';
+  let lastTyped = {};
+  try { lastTyped = JSON.parse(localStorage.getItem(LAST_KEY)) || {}; } catch (e) { lastTyped = {}; }
+  const saveLastTyped = () => { try { localStorage.setItem(LAST_KEY, JSON.stringify(lastTyped)); } catch (e) { /* storage unavailable */ } };
+  function autoFill(account, i) {
+    const typed = lastTyped[account];            // 1 = Company, 2 = Personal
+    if (typed !== 1 && typed !== 2) return;
+    const other = typed === 1 ? 2 : 1;
+    const typedValue = RA.parseAmount(admobData[typed][account] || '');
+    const otherBox = $(`admob-${other}-${i}`);
+    let value = '';
+    if (typedValue !== null) value = (Math.round(((RA.parseAmount(admobData[0][account] || '') || 0) - typedValue) * 100) / 100).toFixed(2);
+    admobData[other][account] = value;
+    otherBox.value = value;
+    // A negative result means the typed amount is bigger than Revenue.
+    otherBox.classList.toggle('invalid', value !== '' && Number(value) < 0);
+    otherBox.title = value !== '' && Number(value) < 0 ? 'Bigger than Revenue: check the amounts' : 'Filled in automatically: Revenue − ' + (typed === 1 ? 'Company' : 'Personal');
+    otherBox.classList.add('auto');
+    $(`admob-${typed}-${i}`).classList.remove('auto');
+    $(`admob-${typed}-${i}`).title = '';
+    saveAdmob(other);
+  }
+  ADMOB_ACCOUNTS.forEach((a, i) => {
+    const typed = lastTyped[a];
+    if (typed === 1 || typed === 2) $(`admob-${typed === 1 ? 2 : 1}-${i}`).classList.add('auto');
+  });
+
   $('admobRows').addEventListener('input', (e) => {
     const box = e.target;
     if (!box.matches('input[data-account]')) return;
     box.classList.toggle('invalid', isBad(box.value));
     const ci = Number(box.dataset.col);
-    admobData[ci][box.dataset.account] = box.value;
+    const account = box.dataset.account;
+    const i = ADMOB_ACCOUNTS.indexOf(account);
+    admobData[ci][account] = box.value;
     saveAdmob(ci);
+    if (ci === 1 || ci === 2) { lastTyped[account] = ci; saveLastTyped(); }
+    autoFill(account, i);
     updateAdmobTotals();
   });
 
