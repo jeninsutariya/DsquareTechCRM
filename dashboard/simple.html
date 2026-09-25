@@ -158,9 +158,9 @@ th.right, td.right { text-align: right; }
     <h2>Google AdMob</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th><th class="right">Company</th><th class="right">Personal</th><th class="right">Tax Amount</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th><th class="right">Company</th><th class="right">Personal</th><th class="right">Tax Amount</th><th class="right">Company (INR)</th><th class="right">Personal (INR)</th></tr></thead>
         <tbody id="admobRows"></tbody>
-        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td><td class="right" id="admobCompanyTotal"></td><td class="right" id="admobPersonalTotal"></td><td class="right" id="admobTaxTotal"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td><td class="right" id="admobCompanyTotal"></td><td class="right" id="admobPersonalTotal"></td><td class="right" id="admobTaxTotal"></td><td class="right" id="admobCompanyInrTotal"></td><td class="right" id="admobPersonalInrTotal"></td></tr></tfoot>
       </table>
     </div>
     <div class="extras">
@@ -343,18 +343,36 @@ th.right, td.right { text-align: right; }
       const sum = RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[ci][a] || '') || 0));
       $(c.total).textContent = c.symbol === '₹' ? inr(sum) : money(sum);
     });
+    updateAdmobInr();
+  }
+
+  // Company (INR) = Company × AdMob USD Rate, and the same for Personal. Shows a dash until a rate is entered.
+  const ADMOB_INR = [{ col: 1, cell: 'admob-cinr', total: 'admobCompanyInrTotal' }, { col: 2, cell: 'admob-pinr', total: 'admobPersonalInrTotal' }];
+  function updateAdmobInr() {
+    const r = RA.parseAmount($('admobUsdRate').value);
+    const rate = r !== null && r > 0 ? r : null;
+    ADMOB_INR.forEach(({ col, cell, total }) => {
+      const values = ADMOB_ACCOUNTS.map((a, i) => {
+        const usd = RA.parseAmount(admobData[col][a] || '');
+        const v = rate === null ? null : paise(paise(usd || 0) * rate);
+        $(`${cell}-${i}`).textContent = v === null ? '—' : inr(v);
+        return v;
+      });
+      $(total).textContent = rate === null ? '—' : inr(paise(RA.sum(values)));
+    });
   }
   $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>${ADMOB_COLS.map((c, ci) => {
     const v = admobData[ci][a] || '';
     return `<td class="right"><span class="amount">${c.symbol || '$'}<input id="admob-${ci}-${i}" data-account="${esc(a)}" data-col="${ci}" inputmode="decimal" autocomplete="off"
       placeholder="0.00" class="${isBad(v) ? 'invalid' : ''}" value="${esc(v)}" aria-label="${c.label} for ${esc(a)}"></span></td>`;
-  }).join('')}</tr>`).join('');
-  updateAdmobTotals();
+  }).join('')}<td class="right net" id="admob-cinr-${i}" title="Company × USD Rate"></td><td class="right net" id="admob-pinr-${i}" title="Personal × USD Rate"></td></tr>`).join('');
   // Google AdMob USD Rate, remembered in this browser (separate from the app section's USD Rate).
   const ADMOB_RATE_KEY = 'appRevenue.admobUsdRate';
   try { $('admobUsdRate').value = localStorage.getItem(ADMOB_RATE_KEY) || ''; } catch (e) { /* storage unavailable */ }
+  updateAdmobTotals();
   $('admobUsdRate').addEventListener('input', (e) => {
     try { localStorage.setItem(ADMOB_RATE_KEY, e.target.value); } catch (err) { /* storage unavailable */ }
+    updateAdmobInr();
   });
 
   // Company and Personal fill each other in: whichever one was typed last is kept,
