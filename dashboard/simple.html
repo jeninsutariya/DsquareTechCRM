@@ -71,6 +71,7 @@ tbody td:last-child { font-weight: 600; }
 tfoot td { background: var(--surface-2); font-weight: 700; border-top: 2px solid var(--line-strong); }
 .num { color: var(--muted); width: 1%; white-space: nowrap; }
 th.right, td.right { text-align: right; }
+#admobRows td { font-weight: 400; }
 .amount { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .amount input { width: 10ch; height: 36px; padding: 0 10px; text-align: right; border: 1px solid var(--line-strong); border-radius: 8px;
   background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -156,9 +157,9 @@ th.right, td.right { text-align: right; }
     <h2>Google AdMob</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>Account name</th><th class="right">Revenue</th><th class="right">Company</th><th class="right">Personal</th></tr></thead>
         <tbody id="admobRows"></tbody>
-        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>All accounts</td><td class="right" id="admobTotal"></td><td class="right" id="admobCompanyTotal"></td><td class="right" id="admobPersonalTotal"></td></tr></tfoot>
       </table>
     </div>
   </section>
@@ -321,29 +322,36 @@ th.right, td.right { text-align: right; }
     show('Cleared. Upload an Excel file to see the total revenue for every app.');
   }
 
-  // Google AdMob accounts: revenue typed per account, remembered in this browser.
+  // Google AdMob accounts: amounts typed per account, remembered in this browser.
   // Kept separate from the Excel data, so Upload Excel and Clear all leave it alone.
   const ADMOB_ACCOUNTS = ['Aneri Beladiya', 'Ashokbhai Bhikadiya', 'Keyur Bhikadiya', 'Meet Vaghasiya', 'Devkurben Sutariya', 'Jenin Sutariya'];
-  const ADMOB_KEY = 'appRevenue.admob';
-  let admob = {};
-  try { admob = JSON.parse(localStorage.getItem(ADMOB_KEY)) || {}; } catch (e) { admob = {}; }
-  const saveAdmob = () => { try { localStorage.setItem(ADMOB_KEY, JSON.stringify(admob)); } catch (e) { /* storage unavailable */ } };
-  function updateAdmobTotal() {
-    $('admobTotal').textContent = money(RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admob[a] || '') || 0)));
+  const ADMOB_COLS = [
+    { key: 'appRevenue.admob', label: 'Revenue', total: 'admobTotal' },
+    { key: 'appRevenue.admobCompany', label: 'Company', total: 'admobCompanyTotal' },
+    { key: 'appRevenue.admobPersonal', label: 'Personal', total: 'admobPersonalTotal' },
+  ];
+  const admobData = ADMOB_COLS.map((c) => { try { return JSON.parse(localStorage.getItem(c.key)) || {}; } catch (e) { return {}; } });
+  const saveAdmob = (ci) => { try { localStorage.setItem(ADMOB_COLS[ci].key, JSON.stringify(admobData[ci])); } catch (e) { /* storage unavailable */ } };
+  const isBad = (v) => (v || '').trim() !== '' && RA.parseAmount(v) === null;
+  function updateAdmobTotals() {
+    ADMOB_COLS.forEach((c, ci) => {
+      $(c.total).textContent = money(RA.sum(ADMOB_ACCOUNTS.map((a) => RA.parseAmount(admobData[ci][a] || '') || 0)));
+    });
   }
-  $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>
-    <td class="right"><span class="amount">$<input id="admob-${i}" data-account="${esc(a)}" inputmode="decimal" autocomplete="off" placeholder="0.00"
-      class="${(admob[a] || '').trim() && RA.parseAmount(admob[a]) === null ? 'invalid' : ''}"
-      value="${esc(admob[a] || '')}" aria-label="Revenue for ${esc(a)}"></span></td></tr>`).join('');
-  updateAdmobTotal();
+  $('admobRows').innerHTML = ADMOB_ACCOUNTS.map((a, i) => `<tr><td class="num">${i + 1}</td><td>${esc(a)}</td>${ADMOB_COLS.map((c, ci) => {
+    const v = admobData[ci][a] || '';
+    return `<td class="right"><span class="amount">$<input id="admob-${ci}-${i}" data-account="${esc(a)}" data-col="${ci}" inputmode="decimal" autocomplete="off"
+      placeholder="0.00" class="${isBad(v) ? 'invalid' : ''}" value="${esc(v)}" aria-label="${c.label} for ${esc(a)}"></span></td>`;
+  }).join('')}</tr>`).join('');
+  updateAdmobTotals();
   $('admobRows').addEventListener('input', (e) => {
     const box = e.target;
     if (!box.matches('input[data-account]')) return;
-    const bad = box.value.trim() !== '' && RA.parseAmount(box.value) === null;
-    box.classList.toggle('invalid', bad);
-    admob[box.dataset.account] = box.value;
-    saveAdmob();
-    updateAdmobTotal();
+    box.classList.toggle('invalid', isBad(box.value));
+    const ci = Number(box.dataset.col);
+    admobData[ci][box.dataset.account] = box.value;
+    saveAdmob(ci);
+    updateAdmobTotals();
   });
 
   // The four boxes under the table, remembered in this browser until Clear all.
