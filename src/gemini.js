@@ -151,4 +151,4 @@ async function translateListing(listing, languages) {
   return out;
 }
 
-module.exports = { translateListing, geminiSetupProblem, cleanTags, cleanTitle, decodeEntities, DEFAULT_MODEL };
+module.exports = { translateListing, geminiSetupProblem, buildPrompt, cleanTags, cleanTitle, decodeEntities, DEFAULT_MODEL };

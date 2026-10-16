@@ -7,7 +7,7 @@ const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
 const gemini = require('./gemini');
-const cloudTranslate = require('./cloudTranslate');
+const claude = require('./claudeTranslate');
 const { startJob, getJob } = require('./jobs');
 
 const app = express();
@@ -187,11 +187,11 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 
 function translateSetupProblem() {
-  if (!gemini.geminiSetupProblem() || !cloudTranslate.cloudSetupProblem()) return null;
-  return 'No translation key in .env. Add GEMINI_API_KEY and/or GOOGLE_TRANSLATE_API_KEY, then restart the app.';
+  if (!gemini.geminiSetupProblem() || !claude.claudeSetupProblem()) return null;
+  return 'No translation key in .env. Add GEMINI_API_KEY and/or ANTHROPIC_API_KEY, then restart the app.';
 }
 
-/** Gemini first; on any Gemini failure, fall back to Google Cloud Translation. */
+/** Gemini first; on any Gemini failure, fall back to Claude. */
 async function translateWithFallback(listing, targets) {
   const geminiProblem = gemini.geminiSetupProblem();
   let geminiError = null;
@@ -200,18 +200,18 @@ async function translateWithFallback(listing, targets) {
       return { engine: 'gemini', translations: await gemini.translateListing(listing, targets) };
     } catch (err) {
       geminiError = err.message;
-      console.warn(`[translate] Gemini failed for listing ${listing.listing_id}, using Google Cloud Translation: ${err.message}`);
+      console.warn(`[translate] Gemini failed for listing ${listing.listing_id}, using Claude: ${err.message}`);
     }
   }
-  if (cloudTranslate.cloudSetupProblem()) throw new Error(geminiError || geminiProblem);
+  if (claude.claudeSetupProblem()) throw new Error(geminiError || geminiProblem);
   try {
-    return { engine: 'google-cloud', geminiError, translations: await cloudTranslate.translateListing(listing, targets) };
+    return { engine: 'claude', geminiError, translations: await claude.translateListing(listing, targets) };
   } catch (err) {
     throw new Error(geminiError ? `Gemini: ${geminiError} | ${err.message}` : err.message);
   }
 }
 
-/** Step 1: ask Gemini (or Google Cloud Translation as fallback) for translations of the selected listings. Nothing is changed on Etsy yet. */
+/** Step 1: ask Gemini (or Claude as fallback) for translations of the selected listings. Nothing is changed on Etsy yet. */
 app.post('/api/etsy/translations/generate', (req, res) => {
   const problem = translateSetupProblem();
   if (problem) return res.status(400).json({ error: problem });

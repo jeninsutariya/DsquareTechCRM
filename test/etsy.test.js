@@ -10,6 +10,8 @@ process.env.ETSY_SHARED_SECRET = 'secret';
 process.env.ETSY_REDIRECT_URI = 'http://localhost/auth/etsy/callback';
 process.env.GEMINI_API_KEY = 'gem-key';
 process.env.GEMINI_MODEL = 'test-model';
+process.env.ANTHROPIC_API_KEY = 'claude-key';
+delete process.env.CLAUDE_MODEL;
 const etsyTranslations = new Map(); // "listing:lang" -> form fields
 
 // Fake Etsy: 250 active listings (3 pages), 2 drafts, nothing else.
@@ -21,12 +23,34 @@ global.fetch = async (input, init = {}) => {
   calls.push({ url, init });
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-  if (url.hostname === 'translation.googleapis.com') {
-    assert.equal(init.headers['x-goog-api-key'], 'gem-key'); // falls back to the Gemini key
+  if (url.hostname === 'api.anthropic.com') {
+    assert.equal(url.pathname, '/v1/messages');
+    const h = new Headers(init.headers);
+    assert.equal(h.get('x-api-key'), 'claude-key');
+    assert.match(h.get('anthropic-beta'), /server-side-fallback-2026-07-01/);
     const req = JSON.parse(init.body);
-    assert.equal(req.source, undefined); // auto-detect
-    if (req.q.some((q) => q.includes('CLOUDFAIL'))) return json({ error: { message: 'API not enabled' } }, 403);
-    return json({ data: { translations: req.q.map((q) => ({ translatedText: `{${req.target}} ${q}` })) } });
+    assert.equal(req.model, 'claude-opus-5-5');
+    assert.equal(req.stream, true);
+    assert.equal(req.fallbacks, 'default');
+    assert.equal(req.output_config.format.type, 'json_schema');
+    const langs = req.output_config.format.schema.required;
+    const prompt = req.messages[0].content;
+    if (prompt.includes('CLAUDEFAIL')) {
+      return json({ type: 'error', error: { type: 'invalid_request_error', message: 'credit balance too low' } }, 400);
+    }
+    const out = Object.fromEntries(langs.map((l) => [l, { title: `<${l}> claude title`, description: `<${l}> claude description`, tags: ['claude tag', 'x'.repeat(30)] }]));
+    const text = JSON.stringify(out);
+    const ev = (type, data) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+    const sse = [
+      ev('message_start', { message: { id: 'msg_1', type: 'message', role: 'assistant', model: req.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } }),
+      ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }),
+      ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: text.slice(0, 20) } }),
+      ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: text.slice(20) } }),
+      ev('content_block_stop', { index: 0 }),
+      ev('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 50 } }),
+      ev('message_stop', {}),
+    ].join('');
+    return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }
   if (url.hostname === 'generativelanguage.googleapis.com') {
     assert.equal(url.pathname, '/v1beta/models/test-model:generateContent');
@@ -70,7 +94,7 @@ global.fetch = async (input, init = {}) => {
     const total = state === 'active' ? 250 : state === 'draft' ? 2 : 0;
     const results = [];
     for (let i = offset; i < Math.min(offset + limit, total); i++) {
-      results.push({ listing_id: (state === 'draft' ? 10000 : 0) + i, language: 'en-US', title: i === 1 ? 'FAILME' : i === 2 ? 'FAILME CLOUDFAIL' : `Tom&#39;s mug &amp; cup ${state} ${i}`, description: 'Great mug &amp; cup', state, quantity: 1, price: { amount: 1999, divisor: 100, currency_code: 'USD' }, skus: [`SKU${i}`], tags: [] });
+      results.push({ listing_id: (state === 'draft' ? 10000 : 0) + i, language: 'en-US', title: i === 1 ? 'FAILME' : i === 2 ? 'FAILME CLAUDEFAIL' : `Tom&#39;s mug &amp; cup ${state} ${i}`, description: 'Great mug &amp; cup', state, quantity: 1, price: { amount: 1999, divisor: 100, currency_code: 'USD' }, skus: [`SKU${i}`], tags: [] });
     }
     return json({ count: total, results });
   }
@@ -135,20 +159,20 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   assert.equal(status.canWrite, true);
   assert.equal(status.geminiProblem, null);
 
-  // Listing 0: Gemini works. Listing 1: Gemini fails -> Google Cloud Translation.
+  // Listing 0: Gemini works. Listing 1: Gemini fails -> Claude.
   // Listing 2: both fail; that must not stop the others.
   let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2], languages: ['de', 'sv', 'en', 'xx'] });
   const gen = await waitJob(base, (await r.json()).jobId);
   assert.equal(gen.results.length, 2);
   assert.equal(gen.errors.length, 1);
-  assert.match(gen.errors[0].error, /Gemini 400: boom.*Google Cloud Translation 403: API not enabled/);
+  assert.match(gen.errors[0].error, /Gemini 400: boom.*Claude 400: .*credit balance too low/);
   const draft = gen.results.find((d) => d.listing_id === 0);
   assert.equal(draft.engine, 'gemini');
   const fallback = gen.results.find((d) => d.listing_id === 1);
-  assert.equal(fallback.engine, 'google-cloud');
+  assert.equal(fallback.engine, 'claude');
   assert.match(fallback.geminiError, /boom/);
-  assert.equal(fallback.translations.sv.title, '{sv} FAILME');
-  assert.equal(fallback.translations.de.description, '{de} Great mug & cup');
+  assert.equal(fallback.translations.sv.title, '<sv> claude title');
+  assert.deepEqual(fallback.translations.de.tags, ['claude tag']); // over-long tag dropped
   assert.deepEqual(Object.keys(draft.translations).sort(), ['de', 'sv']); // 'en' and unknown codes are ignored
   const tags = draft.translations.de.tags;
   assert.equal(tags.length, 13);
