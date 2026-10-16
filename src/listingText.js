@@ -81,4 +81,14 @@ function looksUntranslated(sourceDescription, translatedDescription) {
   return src === norm(translatedDescription);
 }
 
-module.exports = { buildPrompt, cleanTitle, cleanTags, decodeEntities, looksUntranslated };
+/** A short, single-purpose prompt for when a model returned the description untranslated. */
+function buildDescriptionPrompt(description, languageName) {
+  return `Translate the following Etsy product description into ${languageName}.
+Translate every sentence and every phrase into ${languageName}; do not leave any of it in English.
+Keep line breaks, bullet points, emojis, numbers, sizes, file formats (SVG, PNG, DXF, PDF) and URLs unchanged.
+Reply with only the ${languageName} translation and nothing else.
+
+${description}`;
+}
+
+module.exports = { buildPrompt, buildDescriptionPrompt, cleanTitle, cleanTags, decodeEntities, looksUntranslated };

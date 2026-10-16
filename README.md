@@ -49,6 +49,14 @@ to `GEMINI_API_KEY_5`.
 
 The review screen shows which model and key translated each listing.
 
+- **Model busy (503 "high demand"):** retried twice on the same model, then that model pauses for 30
+  seconds while others are tried. If every model is busy, the app waits rather than failing the listing.
+- **Description returned in English:** the same model is asked again for just the description, one
+  language at a time. If it's still English, the next model is tried.
+
+Run `npm run models` to list the models each of your keys can actually use, then put those names in
+`GEMINI_MODELS`.
+
 Output is cleaned to Etsy's rules: title at most 140 characters, at most 13 tags of up to 20 characters each.
 Etsy only shows a translation if that language is enabled in your shop
 (Shop Manager → Settings → Info & Appearance → Languages). The dialog marks languages that aren't enabled with ⚠.

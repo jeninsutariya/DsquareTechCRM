@@ -15,6 +15,7 @@ delete process.env.GEMINI_API_KEY;
 delete process.env.GEMINI_API_KEYS;
 const aiCalls = []; // { start, end } of each fake Gemini request
 const LONG_DESC = 'COPYDESC Handmade ceramic mug, glazed by hand in small batches. Perfect gift for coffee lovers.';
+const STUBBORN_DESC = 'COPYDESC STUBBORN Wooden spoon carved by hand from cherry wood. Food safe and oiled.';
 const etsyTranslations = new Map(); // "listing:lang" -> form fields
 
 // Fake Etsy: 250 active listings (3 pages), 2 drafts, nothing else.
@@ -34,9 +35,14 @@ global.fetch = async (input, init = {}) => {
     assert.equal(url.pathname, '/v1beta/models/test-model:generateContent');
     assert.equal(init.headers['x-goog-api-key'], 'gem-key');
     const req = JSON.parse(init.body);
+    const prompt = req.contents[0].parts[0].text;
+    if (req.generationConfig.responseMimeType === 'text/plain') {
+      // Description-only retry: translated, except for the stubborn listing.
+      const lang = prompt.match(/into (\w+)\./)[1];
+      return json({ candidates: [{ content: { parts: [{ text: prompt.includes('STUBBORN') ? STUBBORN_DESC : `[${lang}] description` }] } }] });
+    }
     assert.equal(req.generationConfig.responseMimeType, 'application/json');
     const langs = req.generationConfig.responseSchema.required;
-    const prompt = req.contents[0].parts[0].text;
     if (prompt.includes('FAILME')) {
       // Unparseable output: this listing fails, the others continue.
       return json({ candidates: [{ content: { parts: [{ text: 'not json' }] } }] });
@@ -45,7 +51,7 @@ global.fetch = async (input, init = {}) => {
     const out = Object.fromEntries(langs.map((l) => [l, {
       title: `<${l}> ai title`,
       // A model that copies the English description back must not count as a translation.
-      description: prompt.includes('COPYDESC') ? LONG_DESC : `<${l}> ai description`,
+      description: prompt.includes('STUBBORN') ? STUBBORN_DESC : prompt.includes('COPYDESC') ? LONG_DESC : `<${l}> ai description`,
       tags: ['good tag', 'way too long tag for etsy rules', 'bad!chars', 'good tag', ...Array.from({ length: 15 }, (_, i) => `t${i}`)],
     }]));
     return json({ candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] });
@@ -77,7 +83,7 @@ global.fetch = async (input, init = {}) => {
     const total = state === 'active' ? 250 : state === 'draft' ? 2 : 0;
     const results = [];
     for (let i = offset; i < Math.min(offset + limit, total); i++) {
-      results.push({ listing_id: (state === 'draft' ? 10000 : 0) + i, language: 'en-US', title: i === 1 ? 'FAILME' : `Tom&#39;s mug &amp; cup ${state} ${i}`, description: i === 3 && state === 'active' ? LONG_DESC : 'Great mug &amp; cup', state, quantity: 1, price: { amount: 1999, divisor: 100, currency_code: 'USD' }, skus: [`SKU${i}`], tags: [] });
+      results.push({ listing_id: (state === 'draft' ? 10000 : 0) + i, language: 'en-US', title: i === 1 ? 'FAILME' : `Tom&#39;s mug &amp; cup ${state} ${i}`, description: state !== 'active' ? 'Great mug &amp; cup' : i === 3 ? LONG_DESC : i === 4 ? STUBBORN_DESC : 'Great mug &amp; cup', state, quantity: 1, price: { amount: 1999, divisor: 100, currency_code: 'USD' }, skus: [`SKU${i}`], tags: [] });
     }
     return json({ count: total, results });
   }
@@ -144,14 +150,15 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   assert.equal(status.canWrite, true);
   assert.strictEqual(status.translateProblem, null);
 
-  // Listing 1: bad output. Listing 3: the model returns the English description unchanged.
-  // Neither stops the others, and neither becomes a draft. 'en' and unknown codes are ignored.
-  let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2, 3], languages: ['de', 'sv', 'en', 'xx'] });
+  // Listing 1: bad output. Listing 3: the English description comes back unchanged, so it is
+  // re-asked description-only and succeeds. Listing 4: still English after that, so it fails.
+  // Failures don't stop the others and don't become drafts. 'en' and unknown codes are ignored.
+  let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2, 3, 4], languages: ['de', 'sv', 'en', 'xx'] });
   const gen = await waitJob(base, (await r.json()).jobId);
-  assert.deepEqual(gen.results.map((x) => x.listing_id), [0, 2]);
+  assert.deepEqual(gen.results.map((x) => x.listing_id), [0, 2, 3]);
   assert.equal(gen.stopped, null);
   assert.equal(draft0Engine(gen), 'test-model · key 1');
-  assert.deepEqual(gen.errors.map((e) => e.item.listing_id), [1, 3]);
+  assert.deepEqual(gen.errors.map((e) => e.item.listing_id), [1, 4]);
   assert.match(gen.errors[0].error, /Translation failed on every model: test-model · key 1: invalid JSON/);
   assert.match(gen.errors[1].error, /description was not translated/);
   assert.equal(etsyTranslations.size, 0, 'generating must not change Etsy');
@@ -159,8 +166,10 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   // Results are saved as drafts on the server.
   const getDrafts = async () => (await realFetch(`${base}/api/etsy/drafts`)).json();
   let drafts = await getDrafts();
-  assert.deepEqual(drafts.listings.map((d) => d.listing_id), [0, 2]);
-  assert.equal(drafts.publishable, 4);
+  assert.deepEqual(drafts.listings.map((d) => d.listing_id), [0, 2, 3]);
+  assert.equal(drafts.publishable, 6);
+  assert.equal(drafts.listings[2].langs.sv.description, '[Swedish] description');
+  assert.equal(drafts.listings[2].langs.de.title, '<de> ai title');
   const d0 = drafts.listings[0].langs;
   assert.deepEqual(Object.keys(d0).sort(), ['de', 'sv']);
   assert.equal(d0.sv.title, '<sv> ai title');
@@ -169,7 +178,7 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   assert.ok(d0.de.tags.every((tg) => tg.length <= 20 && !tg.includes('!')));
 
   // One AI request at a time, each starting >= TRANSLATE_DELAY_MS after the previous ended.
-  assert.equal(aiCalls.length, 4);
+  assert.equal(aiCalls.length, 8); // 5 listings + 2 description retries (listing 3) + 1 (listing 4)
   for (let i = 1; i < aiCalls.length; i++) {
     assert.ok(aiCalls[i].start - aiCalls[i - 1].end >= 145, `gap ${aiCalls[i].start - aiCalls[i - 1].end}ms`);
   }
@@ -177,7 +186,7 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   // Generating again reuses saved drafts: no new AI request.
   r = await post(base, '/api/etsy/translations/generate', { listingIds: [0], languages: ['de', 'sv'] });
   assert.equal((await waitJob(base, (await r.json()).jobId)).results[0].engine, 'already done');
-  assert.equal(aiCalls.length, 4);
+  assert.equal(aiCalls.length, 8);
 
   // Edits are saved; an unticked language is not published.
   const put = (id, lang, body) => realFetch(`${base}/api/etsy/drafts/${id}/${lang}`, {
@@ -190,7 +199,7 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   r = await post(base, '/api/etsy/drafts/publish', {});
   let pub = await waitJob(base, (await r.json()).jobId);
   assert.deepEqual(pub.errors, []);
-  assert.equal(pub.results.length, 3);
+  assert.equal(pub.results.length, 5);
   assert.equal(etsyTranslations.get('0:de').title, 'Edited by user');
   assert.equal(etsyTranslations.get('0:de').tags.split(',').length, 13);
   assert.ok(!etsyTranslations.has('2:sv'));
@@ -208,24 +217,25 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
 
   const rows = await (await realFetch(`${base}/api/etsy/listings?q=active 0`)).json();
   assert.deepEqual(rows.listings.find((l) => l.listing_id === 0).translations, ['de', 'sv']);
+  assert.equal(etsyTranslations.get('3:sv').description, '[Swedish] description');
 
   // Older pages post translations directly (no size limit problem). An English description
   // is kept as a flagged draft and never published.
   r = await post(base, '/api/etsy/translations/publish', {
-    items: [{ listing_id: 3, language: 'de', title: 'Titel', description: LONG_DESC, tags: ['a'] }],
+    items: [{ listing_id: 4, language: 'de', title: 'Titel', description: STUBBORN_DESC, tags: ['a'] }],
   });
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /untranslated description/);
   assert.equal((await getDrafts()).untranslated, 1);
-  assert.ok(!etsyTranslations.has('3:de'));
+  assert.ok(!etsyTranslations.has('4:de'));
 
   // Filters: translation status, sort, and search.
   const list = async (qs) => (await (await realFetch(`${base}/api/etsy/listings?${qs}`)).json()).listings;
-  assert.deepEqual((await list('translated=has:de')).map((l) => l.listing_id), [0, 2]);
-  assert.deepEqual((await list('translated=any')).map((l) => l.listing_id), [0, 2]);
-  assert.equal((await list('translated=none')).length, 250);
-  assert.equal((await list('translated=missing:de')).length, 250);
-  assert.equal((await list('translated=missing:sv')).length, 251);
+  assert.deepEqual((await list('translated=has:de')).map((l) => l.listing_id), [0, 2, 3]);
+  assert.deepEqual((await list('translated=any')).map((l) => l.listing_id), [0, 2, 3]);
+  assert.equal((await list('translated=none')).length, 249);
+  assert.equal((await list('translated=missing:de')).length, 249);
+  assert.equal((await list('translated=missing:sv')).length, 250);
   assert.equal((await list('state=draft&translated=missing:de')).length, 2);
   assert.equal((await list('translated=has:all')).length, 0);
   assert.equal((await list('translated=missing:any')).length, 252);

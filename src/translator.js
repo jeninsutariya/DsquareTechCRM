@@ -1,5 +1,5 @@
 const gemini = require('./gemini');
-const { buildPrompt, cleanTitle, cleanTags, decodeEntities, looksUntranslated } = require('./listingText');
+const { buildPrompt, buildDescriptionPrompt, cleanTitle, cleanTags, decodeEntities, looksUntranslated } = require('./listingText');
 
 /**
  * Translation runs through a chain of (API key × model) combinations:
@@ -20,6 +20,8 @@ const DEFAULT_GEMINI_MODELS = [
 const SHORT_COOLDOWN_MS = 60 * 1000; // per-minute limits
 const LONG_COOLDOWN_MS = 24 * 60 * 60 * 1000; // daily limits
 const MAX_WAIT_MS = 65 * 1000; // wait for a per-minute limit to clear rather than stop
+const BUSY_COOLDOWN_MS = 30 * 1000; // "model is overloaded" (503): skip that model briefly
+const MAX_BUSY_PER_LISTING = 3; // after this many busy rounds on one model, move on for this listing
 
 class StopError extends Error {
   constructor(message) {
@@ -101,7 +103,9 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
     languages,
   );
   const triedHere = new Set(); // combos that failed on this listing for non-limit reasons
+  const busyCount = new Map(); // combo id -> busy errors on this listing
   const failures = [];
+  const sourceDescription = decodeEntities(listing.description);
 
   for (;;) {
     const now = Date.now();
@@ -125,13 +129,18 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
     try {
       const raw = await oneAtATime(() => gemini.requestTranslation(combo, prompt, languages));
       const translations = {};
-      for (const { code } of languages) {
+      for (const { code, name } of languages) {
         const t = raw?.[code];
         if (!t?.title || !t?.description) throw new gemini.ProviderError(`skipped language "${code}"`, 'content');
-        if (looksUntranslated(listing.description, t.description)) {
-          throw new gemini.ProviderError(`description was not translated into "${code}"`, 'content');
+        let description = String(t.description).trim();
+        if (looksUntranslated(listing.description, description)) {
+          // Small models often copy a long description back; ask for just the description.
+          description = await oneAtATime(() => gemini.requestText(combo, buildDescriptionPrompt(sourceDescription, name)));
+          if (looksUntranslated(listing.description, description)) {
+            throw new gemini.ProviderError(`description was not translated into "${code}"`, 'content');
+          }
         }
-        translations[code] = { title: cleanTitle(t.title), description: String(t.description).trim(), tags: cleanTags(t.tags) };
+        translations[code] = { title: cleanTitle(t.title), description, tags: cleanTags(t.tags) };
       }
       return { translations, engine: combo.label };
     } catch (err) {
@@ -147,6 +156,15 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
         case 'model':
           deadModels.add(`${combo.provider}|${combo.model}`);
           break;
+        case 'busy': {
+          // Temporary overload: pause this model briefly; other models are tried meanwhile,
+          // and if every model is busy we wait instead of failing the listing.
+          cooldownUntil.set(combo.id, Date.now() + BUSY_COOLDOWN_MS);
+          const n = (busyCount.get(combo.id) || 0) + 1;
+          busyCount.set(combo.id, n);
+          if (n >= MAX_BUSY_PER_LISTING) triedHere.add(combo.id);
+          break;
+        }
         default: // transient or bad output: try the next combination for this listing
           triedHere.add(combo.id);
       }

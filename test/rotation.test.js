@@ -11,6 +11,7 @@ process.env.GEMINI_API_KEY_1 = 'k1';
 process.env.GEMINI_API_KEY_2 = 'k2';
 process.env.GEMINI_MODELS = 'm-a,m-b,m-c';
 process.env.TRANSLATE_DELAY_MS = '0';
+process.env.GEMINI_BUSY_RETRY_MS = '0,0'; // retry a busy model twice, without waiting in tests
 delete process.env.GEMINI_API_KEY;
 delete process.env.GEMINI_API_KEYS;
 
@@ -47,6 +48,14 @@ global.fetch = async (input, init = {}) => {
   calls.push(combo);
 
   if (mode === 'badkeys') return json({ error: { code: 400, message: 'API key not valid. Please pass a valid API key.' } }, 400);
+  if (mode === 'busy' && model === 'm-a') {
+    return json({ error: { code: 503, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } }, 503);
+  }
+  if (mode === 'busy') {
+    const req = JSON.parse(init.body);
+    const out = Object.fromEntries(req.generationConfig.responseSchema.required.map((l) => [l, { title: `${l} via ${combo}`, description: 'd', tags: ['t'] }]));
+    return json({ candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] });
+  }
   if (model === 'm-b') return json({ error: { code: 404, message: `models/${model} is not found` } }, 404);
   if (combo === 'k1/m-c') {
     return json({ candidates: [{ content: { parts: [{ text: 'not json' }] } }] });
@@ -123,4 +132,22 @@ test('stops right away when every API key is invalid', async (t) => {
   assert.match(job.stopped, /unavailable/);
   assert.deepEqual(job.notProcessed.map((l) => l.listing_id), [0, 1, 2]);
   assert.deepEqual(calls, ['k1/m-a', 'k2/m-a']); // one try per key, then each key is skipped
+});
+
+test('a busy model (503) is retried briefly, then the listing moves to the next model', async (t) => {
+  translator.resetLimits();
+  require('../src/store').drafts.clear();
+  mode = 'busy';
+  calls.length = 0;
+  const server = app.listen(0);
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const job = await generate(base, [0, 1]);
+  assert.deepEqual(job.errors, []);
+  assert.equal(job.stopped, null);
+  assert.deepEqual(job.results.map((r) => r.engine), ['m-b · key 1', 'm-b · key 1']);
+  // m-a: first try + 2 quick retries, then paused for a while; the listing moves to m-b.
+  // The second listing skips the paused m-a.
+  assert.deepEqual(calls, ['k1/m-a', 'k1/m-a', 'k1/m-a', 'k1/m-b', 'k1/m-b']);
 });
