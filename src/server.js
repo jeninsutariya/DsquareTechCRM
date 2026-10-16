@@ -214,8 +214,9 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
 
 // ---- Listing translation (Gemini model/key chain -> Etsy) ----
 
-/** Listings translated at the same time: TRANSLATE_CONCURRENCY, default one per API key (at least 5). */
-const translateConcurrency = () => Number(process.env.TRANSLATE_CONCURRENCY) || Math.max(5, translator.keyCount());
+/** Listings translated at the same time: TRANSLATE_CONCURRENCY, default keys × per-key requests (5–20). */
+const translateConcurrency = () =>
+  Number(process.env.TRANSLATE_CONCURRENCY) || Math.min(20, Math.max(5, translator.parallelCapacity()));
 
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 const listingMap = () => new Map((store.load().listings || []).map((l) => [l.listing_id, l]));

@@ -9,15 +9,13 @@ class ProviderError extends Error {
   }
 }
 
-function responseSchema(languages) {
+function responseSchema(languages, { description = true } = {}) {
+  const fields = ['title', ...(description ? ['description'] : []), 'tags'];
+  const all = { title: { type: 'STRING' }, description: { type: 'STRING' }, tags: { type: 'ARRAY', items: { type: 'STRING' } } };
   const entry = {
     type: 'OBJECT',
-    properties: {
-      title: { type: 'STRING' },
-      description: { type: 'STRING' },
-      tags: { type: 'ARRAY', items: { type: 'STRING' } },
-    },
-    required: ['title', 'description', 'tags'],
+    properties: Object.fromEntries(fields.map((f) => [f, all[f]])),
+    required: fields,
   };
   return {
     type: 'OBJECT',
@@ -81,12 +79,15 @@ async function generate({ model, key }, prompt, generationConfig) {
   }
 }
 
-/** Title, description and tags for several languages in one call: { [code]: { title, description, tags } }. */
-async function requestTranslation(combo, prompt, languages) {
+/**
+ * Title, description and tags for several languages in one call: { [code]: { title, description, tags } }.
+ * With `description: false` only titles and tags are requested (smaller, faster answer).
+ */
+async function requestTranslation(combo, prompt, languages, { description = true } = {}) {
   const text = await generate(combo, prompt, {
     temperature: 0.3,
     responseMimeType: 'application/json',
-    responseSchema: responseSchema(languages),
+    responseSchema: responseSchema(languages, { description }),
   });
   try {
     return JSON.parse(text);

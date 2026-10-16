@@ -34,9 +34,12 @@ Rate limits (429) and 5xx errors are retried with backoff.
    **Publish remaining** later.
    The **Translations** column shows which languages each listing has.
 
-**Speed.** Listings are translated **in parallel, one per API key, at least 5** (each key sends one request
-at a time, so its own limits are respected). With 4 working keys that is about 4× faster. Set
-`TRANSLATE_CONCURRENCY` to override, or `TRANSLATE_DELAY_MS` to add a pause between requests on a key.
+**Speed.** All keys work in parallel, each running up to `TRANSLATE_PER_KEY` (default 3) requests at
+once; several listings are translated at the same time (`TRANSLATE_CONCURRENCY`, default keys × per-key,
+5–20). If a model returns the description in English, the descriptions are re-translated one request per
+language **in parallel across all keys**, and after this happens twice that model is no longer asked for
+descriptions in the main request (smaller, faster answers). Lower `TRANSLATE_PER_KEY` or set
+`TRANSLATE_DELAY_MS` if keys hit "limit reached" often.
 Publishing sends `PUBLISH_CONCURRENCY` (default 3) translations to Etsy at a time.
 Each new request goes to the key with the least work in progress, so all keys share the load. While
 translating, a table shows every key's status (working / ready / resting with time left / not usable)

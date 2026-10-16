@@ -11,6 +11,8 @@ process.env.ETSY_REDIRECT_URI = 'http://localhost/auth/etsy/callback';
 process.env.GEMINI_API_KEY_1 = 'gem-key';
 process.env.GEMINI_MODELS = 'test-model';
 process.env.TRANSLATE_DELAY_MS = '150';
+process.env.TRANSLATE_PER_KEY = '1'; // checks the gap between requests on one key
+process.env.TRANSLATE_CONCURRENCY = '1'; // and the exact request order
 delete process.env.GEMINI_API_KEY;
 delete process.env.GEMINI_API_KEYS;
 const aiCalls = []; // { start, end } of each fake Gemini request

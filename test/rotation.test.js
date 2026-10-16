@@ -12,6 +12,7 @@ process.env.GEMINI_API_KEY_2 = 'k2';
 process.env.GEMINI_MODELS = 'm-a,m-b,m-c';
 process.env.TRANSLATE_DELAY_MS = '0';
 process.env.TRANSLATE_CONCURRENCY = '1'; // these tests check the exact request order
+process.env.TRANSLATE_PER_KEY = '1';
 process.env.GEMINI_BUSY_RETRY_MS = '0,0'; // retry a busy model twice, without waiting in tests
 delete process.env.GEMINI_API_KEY;
 delete process.env.GEMINI_API_KEYS;
