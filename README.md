@@ -34,8 +34,12 @@ Rate limits (429) and 5xx errors are retried with backoff.
    **Publish remaining** later.
    The **Translations** column shows which languages each listing has.
 
-**Model and API key rotation.** Translations run one request at a time, with a
-`TRANSLATE_DELAY_MS` (default 1 second) pause between requests. The app works through a chain:
+**Speed.** Listings are translated **in parallel, one per API key** (each key sends one request
+at a time, so its own limits are respected). With 4 working keys that is about 4× faster. Set
+`TRANSLATE_CONCURRENCY` to override, or `TRANSLATE_DELAY_MS` to add a pause between requests on a key.
+Publishing sends `PUBLISH_CONCURRENCY` (default 3) translations to Etsy at a time.
+
+**Model and API key rotation.** The app works through a chain:
 API key 1 with every model in `GEMINI_MODELS` (default: 3.5 Flash Lite → 3.1 Flash Lite →
 2.5 Flash Lite → 3.6 Flash → 3 Flash → 3.7 Flash → 3.8 Flash), then key 2 with every model, up
 to `GEMINI_API_KEY_5`.
@@ -49,7 +53,7 @@ to `GEMINI_API_KEY_5`.
 
 The review screen shows which model and key translated each listing.
 
-- **Model busy (503 "high demand"):** retried twice on the same model, then that model pauses for 30
+- **Model busy (503 "high demand"):** retried once on the same model, then that model pauses for 30
   seconds while others are tried. If every model is busy, the app waits rather than failing the listing.
 - **Description returned in English:** the same model is asked again for just the description, one
   language at a time. If it's still English, the next model is tried.

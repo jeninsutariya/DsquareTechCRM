@@ -76,13 +76,27 @@ function chainStatus() {
   }));
 }
 
-// One request at a time; the next starts TRANSLATE_DELAY_MS (default 1s) after the previous finished.
-let queue = Promise.resolve();
-const delayMs = () => Number(process.env.TRANSLATE_DELAY_MS ?? 1000);
-function oneAtATime(fn) {
-  const run = queue.then(fn);
-  queue = run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, delayMs())));
+// Each API key sends one request at a time (its next request starts TRANSLATE_DELAY_MS after
+// the previous one finished). Different keys run in parallel, which is what makes it fast.
+const keyQueues = new Map(); // key -> promise chain
+const delayMs = () => Number(process.env.TRANSLATE_DELAY_MS ?? 0);
+function onKey(key, fn) {
+  const run = (keyQueues.get(key) || Promise.resolve()).then(fn);
+  keyQueues.set(key, run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, delayMs()))));
   return run;
+}
+
+/** Number of API keys, used as the default number of listings translated in parallel. */
+const keyCount = () => geminiKeys().length;
+
+/** The chain, starting from key `start` (so parallel workers begin on different keys). */
+function chainFrom(start) {
+  const chain = buildChain();
+  const keys = [...new Set(chain.map((c) => c.key))];
+  if (keys.length < 2) return chain;
+  const first = keys[start % keys.length];
+  const at = chain.findIndex((c) => c.key === first);
+  return [...chain.slice(at), ...chain.slice(0, at)];
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -92,7 +106,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Returns { translations, engine }. Throws StopError when every combination is used up,
  * or a normal Error if every usable combination failed on this listing's content.
  */
-async function translateListing(listing, languages, { onAttempt } = {}) {
+async function translateListing(listing, languages, { onAttempt, worker = 0 } = {}) {
   const prompt = buildPrompt(
     {
       language: listing.language,
@@ -109,7 +123,7 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
 
   for (;;) {
     const now = Date.now();
-    const usable = buildChain().filter((c) => !isDead(c) && !triedHere.has(c.id));
+    const usable = chainFrom(worker).filter((c) => !isDead(c) && !triedHere.has(c.id));
     const combo = usable.find((c) => !coolingFor(c, now));
 
     if (!combo) {
@@ -127,7 +141,7 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
 
     onAttempt?.(combo.label);
     try {
-      const raw = await oneAtATime(() => gemini.requestTranslation(combo, prompt, languages));
+      const raw = await onKey(combo.key, () => gemini.requestTranslation(combo, prompt, languages));
       const translations = {};
       for (const { code, name } of languages) {
         const t = raw?.[code];
@@ -135,7 +149,7 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
         let description = String(t.description).trim();
         if (looksUntranslated(listing.description, description)) {
           // Small models often copy a long description back; ask for just the description.
-          description = await oneAtATime(() => gemini.requestText(combo, buildDescriptionPrompt(sourceDescription, name)));
+          description = await onKey(combo.key, () => gemini.requestText(combo, buildDescriptionPrompt(sourceDescription, name)));
           if (looksUntranslated(listing.description, description)) {
             throw new gemini.ProviderError(`description was not translated into "${code}"`, 'content');
           }
@@ -179,4 +193,4 @@ function resetLimits() {
   deadModels.clear();
 }
 
-module.exports = { translateListing, setupProblem, chainStatus, resetLimits, StopError, DEFAULT_GEMINI_MODELS };
+module.exports = { translateListing, setupProblem, chainStatus, resetLimits, keyCount, StopError, DEFAULT_GEMINI_MODELS };

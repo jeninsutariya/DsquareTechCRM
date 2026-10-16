@@ -33,7 +33,7 @@ function retryDelayMs(error) {
   return Number.isFinite(secs) ? secs * 1000 : null;
 }
 
-const BUSY_RETRY_DELAYS_MS = [2000, 5000]; // "model is overloaded" (503/500): retry the same model briefly
+const BUSY_RETRY_DELAYS_MS = [1000]; // "model is overloaded" (503/500): one quick retry, then try another model
 const busyDelays = () => (process.env.GEMINI_BUSY_RETRY_MS ? list(process.env.GEMINI_BUSY_RETRY_MS) : BUSY_RETRY_DELAYS_MS);
 const list = (v) => String(v).split(',').map(Number).filter((n) => n >= 0);
 

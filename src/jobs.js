@@ -5,7 +5,7 @@ const jobs = new Map();
 const MAX_JOBS = 20;
 
 /**
- * Run `worker(item, job)` over `items` with limited concurrency. Each item's
+ * Run `worker(item, job, workerIndex)` over `items` with limited concurrency. Each item's
  * outcome is recorded; one failure does not stop the batch. A worker error with
  * `stopJob` set stops the batch: that item and the rest go to `job.notProcessed`.
  */
@@ -27,11 +27,11 @@ function startJob(type, items, worker, { concurrency = 3 } = {}) {
   while (jobs.size > MAX_JOBS) jobs.delete(jobs.keys().next().value);
 
   let next = 0;
-  const run = async () => {
+  const run = async (workerIndex) => {
     while (next < items.length && !job.stopped) {
       const item = items[next++];
       try {
-        job.results.push(await worker(item, job));
+        job.results.push(await worker(item, job, workerIndex));
       } catch (err) {
         if (err.stopJob) {
           job.stopped = err.message;
@@ -43,7 +43,7 @@ function startJob(type, items, worker, { concurrency = 3 } = {}) {
       job.done++;
     }
   };
-  Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run)).then(() => {
+  Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, (_, i) => run(i))).then(() => {
     if (job.stopped) job.notProcessed.push(...items.slice(next));
     job.current = null;
     job.status = 'done';

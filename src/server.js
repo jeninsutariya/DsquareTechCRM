@@ -213,6 +213,9 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
 
 // ---- Listing translation (Gemini model/key chain -> Etsy) ----
 
+/** Listings translated at the same time: TRANSLATE_CONCURRENCY, default one per API key. */
+const translateConcurrency = () => Number(process.env.TRANSLATE_CONCURRENCY) || Math.max(1, translator.keyCount());
+
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 const listingMap = () => new Map((store.load().listings || []).map((l) => [l.listing_id, l]));
 
@@ -247,7 +250,7 @@ app.post('/api/etsy/translations/generate', (req, res) => {
   const listings = (store.load().listings || []).filter((l) => wanted.has(l.listing_id));
   if (!listings.length) return res.status(400).json({ error: 'Select at least one listing' });
 
-  const job = startJob('generate', listings, async (listing, job) => {
+  const job = startJob('generate', listings, async (listing, job, worker) => {
     const id = listing.listing_id;
     const own = langs.filter((c) => c !== baseLang(listing.language));
     if (!own.length) throw new Error('Listing is already in the selected language');
@@ -258,6 +261,7 @@ app.post('/api/etsy/translations/generate', (req, res) => {
 
     const targets = todo.map((code) => ({ code, name: etsy.TRANSLATION_LANGUAGES[code] }));
     const { translations, engine } = await translator.translateListing(listing, targets, {
+      worker,
       onAttempt: (label) => (job.current = label),
     });
     const all = store.drafts.load();
@@ -267,7 +271,7 @@ app.post('/api/etsy/translations/generate', (req, res) => {
     }
     store.drafts.save(all);
     return { listing_id: id, engine, languages: Object.keys(translations) };
-  }, { concurrency: 1 }); // one request at a time (see translator.js)
+  }, { concurrency: translateConcurrency() }); // parallel across API keys (see translator.js)
   res.json({ jobId: job.id });
 });
 
@@ -376,7 +380,7 @@ function startPublish(filter = () => true) {
       store.drafts.save(all);
     }
     return item;
-  }, { concurrency: 1 });
+  }, { concurrency: Number(process.env.PUBLISH_CONCURRENCY) || 3 }); // Etsy allows ~10 requests/second
   return { jobId: job.id, skippedUntranslated };
 }
 
