@@ -20,6 +20,17 @@ function getClient() {
   return client;
 }
 
+// Only one OpenAI request runs at a time, and the next one starts
+// OPENAI_DELAY_MS (default 1 second) after the previous one finished.
+let queue = Promise.resolve();
+const delayMs = () => Number(process.env.OPENAI_DELAY_MS ?? 1000);
+
+function oneAtATime(fn) {
+  const run = queue.then(fn);
+  queue = run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, delayMs())));
+  return run;
+}
+
 /**
  * Translate one Etsy listing into several languages with OpenAI (ChatGPT).
  * Returns { [code]: { title, description, tags } }.
@@ -36,11 +47,13 @@ async function translateListing(listing, languages) {
 
   let response;
   try {
-    response = await getClient().responses.parse({
-      model: process.env.OPENAI_MODEL || DEFAULT_MODEL,
-      input: buildPrompt(source, languages),
-      text: { format: zodTextFormat(schema, 'listing_translations') },
-    });
+    response = await oneAtATime(() =>
+      getClient().responses.parse({
+        model: process.env.OPENAI_MODEL || DEFAULT_MODEL,
+        input: buildPrompt(source, languages),
+        text: { format: zodTextFormat(schema, 'listing_translations') },
+      }),
+    );
   } catch (err) {
     if (err instanceof OpenAI.AuthenticationError) {
       throw new Error('OpenAI API key is invalid. Check OPENAI_API_KEY in .env.');

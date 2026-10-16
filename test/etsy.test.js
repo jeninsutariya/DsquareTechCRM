@@ -9,6 +9,8 @@ process.env.ETSY_API_KEY = 'key123';
 process.env.ETSY_SHARED_SECRET = 'secret';
 process.env.ETSY_REDIRECT_URI = 'http://localhost/auth/etsy/callback';
 process.env.OPENAI_API_KEY = 'openai-key';
+process.env.OPENAI_DELAY_MS = '150';
+const openaiCalls = []; // { start, end } of each fake OpenAI request
 delete process.env.OPENAI_MODEL;
 const etsyTranslations = new Map(); // "listing:lang" -> form fields
 
@@ -22,6 +24,10 @@ global.fetch = async (input, init = {}) => {
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
   if (url.hostname === 'api.openai.com') {
+    const call = { start: Date.now() };
+    openaiCalls.push(call);
+    await new Promise((r) => setTimeout(r, 30));
+    call.end = Date.now();
     assert.equal(url.pathname, '/v1/responses');
     assert.equal(new Headers(init.headers).get('authorization'), 'Bearer openai-key');
     const req = JSON.parse(init.body);
@@ -151,6 +157,12 @@ test('translate selected listings with ChatGPT, then publish to Etsy', async (t)
   assert.equal(tags[0], 'good tag');
   assert.ok(tags.every((tg) => tg.length <= 20 && !tg.includes('!')));
   assert.equal(etsyTranslations.size, 0, 'generating must not change Etsy');
+
+  // One OpenAI request at a time, each starting >= OPENAI_DELAY_MS after the previous ended.
+  assert.equal(openaiCalls.length, 3);
+  for (let i = 1; i < openaiCalls.length; i++) {
+    assert.ok(openaiCalls[i].start - openaiCalls[i - 1].end >= 145, `gap ${openaiCalls[i].start - openaiCalls[i - 1].end}ms`);
+  }
 
   // Publish: first time creates (PUT 404 -> POST), second time updates via PUT.
   const items = [{ listing_id: 0, language: 'de', ...draft.translations.de, title: 'Edited by user' }];

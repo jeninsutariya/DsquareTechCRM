@@ -235,7 +235,7 @@ app.post('/api/etsy/translations/generate', (req, res) => {
       source: { title: decodeEntities(listing.title), language: listing.language },
       translations: await openai.translateListing(listing, targets),
     };
-  });
+  }, { concurrency: 1 }); // OpenAI calls run one at a time (see openaiTranslate.js)
   res.json({ jobId: job.id });
 });
 
