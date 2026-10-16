@@ -65,6 +65,7 @@
     .preview-lang textarea { min-height:90px; resize:vertical; }
     .hint { font-size:12px; color:var(--muted); }
     .hint.bad { color:var(--err); }
+    .engine { float:right; font-size:11px; font-weight:500; color:var(--muted); }
     ul.errors { margin:8px 0 0; padding-left:18px; color:var(--err); }
   </style>
 </head>
@@ -253,7 +254,8 @@
     const dlg = $('dlg');
     const body = (html) => { $('dlg-body').innerHTML = html; };
     const foot = (html) => { $('dlg-foot').innerHTML = html; };
-    let drafts = [];  // [{ listing_id, source, translations: {code: {title, description, tags}} }]
+    let drafts = [];
+    let lastGen = null; // last generate job: errors, stopped reason, notProcessed  // [{ listing_id, source, translations: {code: {title, description, tags}} }]
 
     $('dlg-close').onclick = () => {
       if (busy && !confirm('A job is still running in the background. Close anyway?')) return;
@@ -273,8 +275,9 @@
       const shopLangs = (status.shop.languages || []).map((c) => c.split('-')[0]);
       const remembered = JSON.parse(localStorageGet('langs') || '[]');
       body(`
-        <p style="margin-top:0">Choose the languages. ChatGPT (OpenAI) will translate the <b>title, description and tags</b>.
+        <p style="margin-top:0">Choose the languages. AI will translate the <b>title, description and tags</b>.
         You can review and edit everything before anything changes on Etsy.</p>
+        ${chainSummary()}
         <div class="langs">${Object.entries(status.translationLanguages).map(([code, name]) => `
           <label><input type="checkbox" value="${code}" ${remembered.includes(code) ? 'checked' : ''}>
           ${esc(name)} <span class="muted">${code}</span>
@@ -284,6 +287,15 @@
         A listing is skipped for its own language.</p>`);
       foot(`<div class="spacer"></div><button id="gen-btn" class="primary">Generate translations</button>`);
       $('gen-btn').onclick = generate;
+    }
+
+    // Which model/API key combinations are ready, from /api/etsy/status.
+    function chainSummary() {
+      const chain = status.translatorChain || [];
+      const ready = chain.filter((c) => c.state === 'ready');
+      if (!chain.length) return '';
+      return `<p class="hint">${ready.length} of ${chain.length} model/API key combinations ready` +
+        (ready.length ? ` · starts with <b>${esc(ready[0].label)}</b>, switches automatically when a limit is reached.` : ' · all have reached their limits; try again later.') + `</p>`;
     }
 
     function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
@@ -298,7 +310,8 @@
         for (;;) {
           const job = await api('/api/jobs/' + jobId);
           $('bar').style.width = `${(job.done / job.total) * 100}%`;
-          $('prog').textContent = `${job.done} of ${job.total} done${job.errors.length ? ` · ${job.errors.length} failed` : ''}`;
+          $('prog').textContent = `${job.done} of ${job.total} done${job.errors.length ? ` · ${job.errors.length} failed` : ''}` +
+            (job.current ? ` · using ${job.current}` : '');
           if (job.status === 'done') return job;
           await new Promise((r) => setTimeout(r, 1000));
         }
@@ -313,9 +326,11 @@
       localStorageSet('langs', JSON.stringify(languages));
       try {
         const job = await runJob('/api/etsy/translations/generate', { listingIds: [...selected], languages },
-          `Translating ${selected.size} listing(s) into ${languages.length} language(s) with ChatGPT…`);
+          `Translating ${selected.size} listing(s) into ${languages.length} language(s)…`);
+        lastGen = job;
         drafts = job.results;
-        showPreview(job.errors);
+        showPreview();
+        loadStatus();
       } catch (e) {
         body(`<div class="msg err">${esc(e.message)}</div>`);
         foot(`<div class="spacer"></div><button id="back-btn">Back</button>`);
@@ -328,14 +343,22 @@
       return `<div class="msg err"><b>${errors.length} failed</b><ul class="errors">${errors.map((e) => `<li>${esc(describe(e.item))}: ${esc(e.error)}</li>`).join('')}</ul></div>`;
     }
 
-    function showPreview(errors = []) {
+    function stoppedNotice() {
+      if (!lastGen?.stopped) return '';
+      const n = lastGen.notProcessed.length;
+      return `<div class="msg warn"><b>Stopped:</b> ${esc(lastGen.stopped)} ${lastGen.results.length} of ${lastGen.total} listing(s) translated;
+        ${n} not processed yet. Publish the ones below now; the ${n} remaining stay selected so you can translate them later.</div>`;
+    }
+
+    function showPreview() {
+      const errors = lastGen?.errors || [];
       const titleOf = (id) => decode(shown.find((l) => l.listing_id === id)?.title || drafts.find((d) => d.listing_id === id)?.source.title || `#${id}`);
       $('dlg-title').textContent = 'Review translations';
-      body(errorList(errors, (l) => decode(l.title)) +
+      body(stoppedNotice() + errorList(errors, (l) => decode(l.title)) +
         (drafts.length ? '<p style="margin-top:0" class="muted">Edit anything you like. Untick a language to skip it. Nothing is saved to Etsy until you click Publish.</p>' : '') +
         drafts.map((d) => `
           <div class="preview-listing">
-            <h3>${esc(titleOf(d.listing_id))}</h3>
+            <h3>${esc(titleOf(d.listing_id))} <span class="engine">${esc(d.engine || '')}</span></h3>
             ${Object.entries(d.translations).map(([code, t]) => `
               <div class="preview-lang" data-id="${d.listing_id}" data-lang="${code}">
                 <label class="lang-head"><input type="checkbox" class="include" checked> <span class="lang">${code}</span> ${esc(status.translationLanguages[code])}</label>
@@ -397,7 +420,11 @@
           errorList(job.errors, (i) => `${decode(shown.find((l) => l.listing_id === i.listing_id)?.title || '#' + i.listing_id)} (${i.language})`));
         foot(`<div class="spacer"></div><button id="done-btn" class="primary">Close</button>`);
         $('done-btn').onclick = () => dlg.close();
-        if (!job.errors.length) selected.clear();
+        // Keep listings that were never translated (limits ran out) selected for a later run.
+        if (lastGen?.notProcessed?.length) {
+          selected.clear();
+          lastGen.notProcessed.forEach((l) => selected.add(l.listing_id));
+        } else if (!job.errors.length) selected.clear();
         loadListings();
       } catch (e) {
         body(`<div class="msg err">${esc(e.message)}</div>`);

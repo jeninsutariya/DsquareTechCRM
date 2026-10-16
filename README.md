@@ -16,18 +16,31 @@ CRM with a one-click Etsy shop connection that automatically imports **all** lis
 Access tokens refresh automatically, so the shop stays connected after restarts.
 Rate limits (429) and 5xx errors are retried with backoff.
 
-### Translate listings with ChatGPT (OpenAI)
+### Translate listings with AI (Gemini model/key rotation)
 
 1. Tick the listings you want, or the header box to select everything shown.
    Tip: set the filter to **Missing German** (or another language), then tick the header box to select every listing that still needs that translation.
 2. Click **Translate & update selected** and choose languages
    (German, Spanish, French, Italian, Japanese, Dutch, Polish, Portuguese, Russian, Swedish).
-3. ChatGPT translates the **title, description and tags** of each listing, written for local Etsy search.
+3. AI translates the **title, description and tags** of each listing, written for local Etsy search.
 4. Review and edit the result. Nothing changes on Etsy yet.
 5. Click **Publish to Etsy**. Each translation is saved to the listing on Etsy.
    The **Translations** column shows which languages each listing has.
 
-Translations use the **OpenAI API** (`gpt-5.5` by default, set `OPENAI_MODEL` to change it) with `OPENAI_API_KEY` from `.env`.
+**Model and API key rotation.** Translations run one request at a time, with a
+`TRANSLATE_DELAY_MS` (default 1 second) pause between requests. The app works through a chain:
+API key 1 with every model in `GEMINI_MODELS` (default: 3.5 Flash Lite → 3.1 Flash Lite →
+2.5 Flash Lite → 3.6 Flash → 3 Flash → 3.7 Flash → 3.8 Flash), then key 2 with every model, up
+to `GEMINI_API_KEY_5`. Last comes OpenAI, if `OPENAI_API_KEY` is set.
+
+- **Limit reached (429):** that model/key pauses (1 minute, or 24 hours for a daily limit). The
+  **same listing is retried** on the next model/key, so nothing is skipped.
+- **Invalid key, or a model that doesn't exist:** it's skipped for the rest of the run.
+- **Bad output from one model:** the listing is retried on the next model.
+- **Everything used up:** translating stops. Listings already done go to the review screen to
+  publish. The rest stay selected so you can run them later.
+
+The review screen shows which model and key translated each listing.
 
 Output is cleaned to Etsy's rules: title at most 140 characters, at most 13 tags of up to 20 characters each.
 Etsy only shows a translation if that language is enabled in your shop
@@ -43,7 +56,7 @@ Shops connected before this feature need to click **Reconnect shop** once, which
 3. Configure and run:
 
 ```bash
-cp .env.example .env   # fill in ETSY_API_KEY, ETSY_SHARED_SECRET, OPENAI_API_KEY
+cp .env.example .env   # fill in ETSY_API_KEY, ETSY_SHARED_SECRET, GEMINI_API_KEY_1..5
 npm install
 npm start              # open http://localhost:3000
 ```
@@ -66,7 +79,7 @@ macOS is TextEdit saving the file as `.env.txt` or `.env.rtf`. Create it from th
 | GET  | `/api/etsy/listings?state=&q=&translated=&sort=` | Cached listings. `q` matches title, SKU or tag; `translated` is `none`, `any`, `has:all`, `missing:any`, `has:<lang>` or `missing:<lang>`; `sort` is `updated`, `title`, `price_asc`, `price_desc`, `views` or `favorites` |
 | GET  | `/api/etsy/listings/raw` | Full raw Etsy listing objects |
 | GET  | `/api/etsy/listings/export.csv` | CSV export |
-| POST | `/api/etsy/translations/generate` | `{listingIds, languages}` → ChatGPT drafts (background job) |
+| POST | `/api/etsy/translations/generate` | `{listingIds, languages}` → AI drafts via model/key rotation (background job) |
 | POST | `/api/etsy/translations/publish` | `{items:[{listing_id, language, title, description, tags}]}` → save to Etsy (background job) |
 | GET  | `/api/jobs/:id` | Job progress, results and per-item errors |
 

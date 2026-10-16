@@ -37,7 +37,9 @@ global.fetch = async (input, init = {}) => {
     const langs = req.text.format.schema.required;
     const prompt = req.input;
     if (prompt.includes('FAILME')) {
-      return json({ error: { message: 'You exceeded your current quota', type: 'insufficient_quota', code: 'insufficient_quota' } }, 400);
+      // Unparseable output: this listing fails, the others continue.
+      return json({ id: 'resp_x', object: 'response', status: 'completed', model: req.model,
+        output: [{ id: 'msg_x', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'not json', annotations: [] }] }] });
     }
     assert.match(prompt, /Tom's mug & cup/); // HTML entities decoded before translating
     const out = Object.fromEntries(langs.map((l) => [l, {
@@ -126,6 +128,8 @@ test('connect flow imports every listing across states and pages', async (t) => 
 
 const post = (base, path, body) => realFetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
+const draft0Engine = (gen) => gen.results.find((d) => d.listing_id === 0).engine;
+
 async function waitJob(base, jobId) {
   for (;;) {
     const job = await (await realFetch(`${base}/api/jobs/${jobId}`)).json();
@@ -148,7 +152,9 @@ test('translate selected listings with ChatGPT, then publish to Etsy', async (t)
   const gen = await waitJob(base, (await r.json()).jobId);
   assert.equal(gen.results.length, 2);
   assert.equal(gen.errors.length, 1);
-  assert.match(gen.errors[0].error, /OpenAI 400: .*exceeded your current quota/);
+  assert.match(gen.errors[0].error, /Translation failed on every model: gpt-5.5 · OpenAI/);
+  assert.equal(gen.stopped, null);
+  assert.equal(draft0Engine(gen), 'gpt-5.5 · OpenAI');
   const draft = gen.results.find((d) => d.listing_id === 0);
   assert.deepEqual(Object.keys(draft.translations).sort(), ['de', 'sv']);
   assert.equal(draft.translations.sv.title, '<sv> gpt title');

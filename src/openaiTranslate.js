@@ -1,87 +1,52 @@
 const OpenAI = require('openai');
 const { z } = require('zod');
 const { zodTextFormat } = require('openai/helpers/zod');
-const { buildPrompt, cleanTitle, cleanTags, decodeEntities } = require('./listingText');
+const { ProviderError } = require('./gemini');
 
-const DEFAULT_MODEL = 'gpt-5.5';
-
-function openaiSetupProblem() {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key || key === 'your_openai_api_key') {
-    return 'OPENAI_API_KEY is not set in .env. Get a key at https://platform.openai.com/api-keys';
-  }
-  return null;
+// One client per API key; retries are handled by the translator's model/key rotation.
+const clients = new Map();
+function clientFor(key) {
+  if (!clients.has(key)) clients.set(key, new OpenAI({ apiKey: key, maxRetries: 1 }));
+  return clients.get(key);
 }
 
-let client;
-function getClient() {
-  // Created lazily so .env is loaded first; reads OPENAI_API_KEY from the environment.
-  client ??= new OpenAI({ maxRetries: 4 });
-  return client;
-}
-
-// Only one OpenAI request runs at a time, and the next one starts
-// OPENAI_DELAY_MS (default 1 second) after the previous one finished.
-let queue = Promise.resolve();
-const delayMs = () => Number(process.env.OPENAI_DELAY_MS ?? 1000);
-
-function oneAtATime(fn) {
-  const run = queue.then(fn);
-  queue = run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, delayMs())));
-  return run;
-}
-
-/**
- * Translate one Etsy listing into several languages with OpenAI (ChatGPT).
- * Returns { [code]: { title, description, tags } }.
- */
-async function translateListing(listing, languages) {
+/** One OpenAI request. Returns the raw { [code]: { title, description, tags } } object. */
+async function requestTranslation({ model, key }, prompt, languages) {
   const entry = z.object({ title: z.string(), description: z.string(), tags: z.array(z.string()) });
   const schema = z.object(Object.fromEntries(languages.map((l) => [l.code, entry])));
-  const source = {
-    language: listing.language,
-    title: decodeEntities(listing.title),
-    description: decodeEntities(listing.description),
-    tags: (listing.tags || []).map(decodeEntities),
-  };
 
   let response;
   try {
-    response = await oneAtATime(() =>
-      getClient().responses.parse({
-        model: process.env.OPENAI_MODEL || DEFAULT_MODEL,
-        input: buildPrompt(source, languages),
-        text: { format: zodTextFormat(schema, 'listing_translations') },
-      }),
-    );
+    response = await clientFor(key).responses.parse({
+      model,
+      input: prompt,
+      text: { format: zodTextFormat(schema, 'listing_translations') },
+    });
   } catch (err) {
-    if (err instanceof OpenAI.AuthenticationError) {
-      throw new Error('OpenAI API key is invalid. Check OPENAI_API_KEY in .env.');
+    if (err instanceof OpenAI.RateLimitError) {
+      const long = err.code === 'insufficient_quota';
+      const retryAfter = Number(err.headers?.get?.('retry-after'));
+      throw new ProviderError(`limit reached: ${err.message}`, 'quota', {
+        long,
+        retryAfterMs: retryAfter > 0 ? retryAfter * 1000 : null,
+      });
     }
-    if (err instanceof OpenAI.NotFoundError) {
-      throw new Error(`OpenAI model not found: ${err.message} (check OPENAI_MODEL in .env)`);
+    if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) {
+      throw new ProviderError(`API key rejected: ${err.message}`, 'key');
     }
-    if (err instanceof OpenAI.APIError) throw new Error(`OpenAI ${err.status ?? ''}: ${err.message}`.trim());
-    throw err;
+    if (err instanceof OpenAI.NotFoundError || err instanceof OpenAI.BadRequestError) {
+      throw new ProviderError(`model unavailable: ${err.message}`, 'model');
+    }
+    throw new ProviderError(err.message, 'transient');
   }
 
   if (response.status === 'incomplete') {
-    throw new Error(`OpenAI response was cut off (${response.incomplete_details?.reason || 'incomplete'})`);
+    throw new ProviderError(`response cut off (${response.incomplete_details?.reason || 'incomplete'})`, 'content');
   }
-  const refusal = response.output
-    ?.flatMap((item) => item.content || [])
-    .find((c) => c.type === 'refusal');
-  if (refusal) throw new Error(`OpenAI declined to translate this listing: ${refusal.refusal}`);
-
-  const result = response.output_parsed;
-  if (!result) throw new Error('OpenAI returned no translation');
-
-  const out = {};
-  for (const { code } of languages) {
-    const t = result[code];
-    out[code] = { title: cleanTitle(t.title), description: t.description.trim(), tags: cleanTags(t.tags) };
-  }
-  return out;
+  const refusal = response.output?.flatMap((item) => item.content || []).find((c) => c.type === 'refusal');
+  if (refusal) throw new ProviderError(`declined: ${refusal.refusal}`, 'content');
+  if (!response.output_parsed) throw new ProviderError('no translation returned', 'content');
+  return response.output_parsed;
 }
 
-module.exports = { translateListing, openaiSetupProblem, DEFAULT_MODEL };
+module.exports = { requestTranslation };
