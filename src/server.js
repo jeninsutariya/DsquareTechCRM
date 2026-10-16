@@ -6,8 +6,11 @@ loadEnv();
 const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
+const gemini = require('./gemini');
+const { startJob, getJob } = require('./jobs');
 
 const app = express();
+app.use(express.json({ limit: '5mb' }));
 const PORT = Number(process.env.PORT) || 3000;
 const SYNC_INTERVAL_MINUTES = Number(process.env.SYNC_INTERVAL_MINUTES) || 0;
 
@@ -43,7 +46,7 @@ function syncListings() {
   return syncInProgress;
 }
 
-function toRow(l) {
+function toRow(l, translations = {}) {
   const price = l.price ? l.price.amount / l.price.divisor : null;
   return {
     listing_id: l.listing_id,
@@ -57,6 +60,8 @@ function toRow(l) {
     num_favorers: l.num_favorers,
     url: l.url,
     image: l.images?.[0]?.url_170x135 || null,
+    language: l.language || null,
+    translations: Object.keys(translations[l.listing_id] || {}),
     tags: (l.tags || []).join('|'),
     updated_at: l.updated_timestamp ? new Date(l.updated_timestamp * 1000).toISOString() : null,
   };
@@ -88,13 +93,20 @@ app.get('/auth/etsy/callback', async (req, res) => {
 
   try {
     const tokens = await etsy.exchangeCode(code, pending.codeVerifier);
-    store.save({ tokens });
+    store.update({ tokens }); // keep translation history when reconnecting
     const me = await client.getMe();
     if (!me.shop_id) throw new Error('This Etsy account has no shop');
     const shop = await client.getShop(me.shop_id);
     store.update({
       userId: me.user_id,
-      shop: { shop_id: shop.shop_id, shop_name: shop.shop_name, url: shop.url, currency: shop.currency_code },
+      shop: {
+        shop_id: shop.shop_id,
+        shop_name: shop.shop_name,
+        url: shop.url,
+        currency: shop.currency_code,
+        languages: shop.languages || [],
+      },
+      scopes: etsy.config().scopes.split(' '),
       connectedAt: new Date().toISOString(),
     });
     // Connect -> immediately fetch all listings.
@@ -114,9 +126,13 @@ app.post('/auth/etsy/disconnect', (req, res) => {
 // ---- API ----
 
 app.get('/api/etsy/status', (req, res) => {
-  const { shop, connectedAt, lastSyncAt, lastSyncError, counts, listings } = store.load();
+  const { shop, connectedAt, lastSyncAt, lastSyncError, counts, listings, scopes } = store.load();
   res.json({
     setupProblem: etsySetupProblem(),
+    geminiProblem: gemini.geminiSetupProblem(),
+    // Shops connected before write access was added must reconnect once.
+    canWrite: Boolean(scopes?.includes('listings_w')),
+    translationLanguages: etsy.TRANSLATION_LANGUAGES,
     connected: Boolean(shop),
     shop: shop || null,
     connectedAt: connectedAt || null,
@@ -138,7 +154,8 @@ app.post('/api/etsy/listings/sync', async (req, res) => {
 
 app.get('/api/etsy/listings', (req, res) => {
   const { state, q } = req.query;
-  let rows = (store.load().listings || []).map(toRow);
+  const data = store.load();
+  let rows = (data.listings || []).map((l) => toRow(l, data.translations));
   if (state) rows = rows.filter((r) => r.state === state);
   if (q) {
     const needle = String(q).toLowerCase();
@@ -152,7 +169,7 @@ app.get('/api/etsy/listings/raw', (req, res) => {
 });
 
 app.get('/api/etsy/listings/export.csv', (req, res) => {
-  const rows = (store.load().listings || []).map(toRow);
+  const rows = (store.load().listings || []).map((l) => toRow(l));
   const cols = ['listing_id', 'title', 'state', 'quantity', 'price', 'currency', 'sku', 'views', 'num_favorers', 'tags', 'url', 'updated_at'];
   const esc = (v) => {
     const s = v === null || v === undefined ? '' : String(v);
@@ -162,6 +179,86 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="etsy-listings.csv"');
   res.send(csv);
+});
+
+// ---- Listing translation (Gemini -> Etsy) ----
+
+const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
+
+/** Step 1: ask Gemini for translations of the selected listings. Nothing is changed on Etsy yet. */
+app.post('/api/etsy/translations/generate', (req, res) => {
+  const problem = gemini.geminiSetupProblem();
+  if (problem) return res.status(400).json({ error: problem });
+
+  const { listingIds = [], languages = [] } = req.body || {};
+  const langs = [...new Set(languages)].filter((c) => etsy.TRANSLATION_LANGUAGES[c]);
+  if (!langs.length) return res.status(400).json({ error: 'Choose at least one language' });
+
+  const wanted = new Set(listingIds.map(Number));
+  const listings = (store.load().listings || []).filter((l) => wanted.has(l.listing_id));
+  if (!listings.length) return res.status(400).json({ error: 'Select at least one listing' });
+
+  const job = startJob('generate', listings, async (listing) => {
+    const targets = langs
+      .filter((c) => c !== baseLang(listing.language))
+      .map((code) => ({ code, name: etsy.TRANSLATION_LANGUAGES[code] }));
+    if (!targets.length) throw new Error('Listing is already in the selected language');
+    const translations = await gemini.translateListing(listing, targets);
+    return {
+      listing_id: listing.listing_id,
+      source: { title: gemini.decodeEntities(listing.title), language: listing.language },
+      translations,
+    };
+  });
+  res.json({ jobId: job.id });
+});
+
+/** Step 2: save the reviewed translations to Etsy. */
+app.post('/api/etsy/translations/publish', (req, res) => {
+  const { shop } = store.load();
+  if (!shop) return res.status(400).json({ error: 'Etsy shop is not connected' });
+
+  const known = new Set((store.load().listings || []).map((l) => l.listing_id));
+  const items = (req.body?.items || [])
+    .map((i) => ({
+      listing_id: Number(i.listing_id),
+      language: String(i.language),
+      title: gemini.cleanTitle(i.title),
+      description: String(i.description || '').trim(),
+      tags: gemini.cleanTags(i.tags),
+    }))
+    .filter((i) => known.has(i.listing_id) && etsy.TRANSLATION_LANGUAGES[i.language] && i.title && i.description);
+  if (!items.length) return res.status(400).json({ error: 'Nothing to publish' });
+
+  const job = startJob(
+    'publish',
+    items,
+    async (item) => {
+      try {
+        await client.upsertTranslation(shop.shop_id, item.listing_id, item.language, item);
+      } catch (err) {
+        if (err.status === 403) {
+          throw new Error('Etsy denied write access. Click "Reconnect shop" to grant permission to update listings.');
+        }
+        throw err;
+      }
+      const all = store.load().translations || {};
+      all[item.listing_id] = {
+        ...all[item.listing_id],
+        [item.language]: { title: item.title, tags: item.tags, updatedAt: new Date().toISOString() },
+      };
+      store.update({ translations: all });
+      return { listing_id: item.listing_id, language: item.language };
+    },
+    { concurrency: 2 }, // stay well inside Etsy's rate limit
+  );
+  res.json({ jobId: job.id });
+});
+
+app.get('/api/jobs/:id', (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found (the app may have restarted)' });
+  res.json(job);
 });
 
 app.use(express.static(path.join(__dirname, '..', 'public')));

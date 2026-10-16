@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DsquareTech CRM · Etsy</title>
   <style>
-    :root { --bg:#f6f6f4; --card:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e3df; --accent:#f1641e; --ok:#1f8a4c; --err:#c0392b; }
+    :root { --bg:#f6f6f4; --card:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e3df; --accent:#f1641e; --ok:#1f8a4c; --err:#c0392b; --sel:#fff4ee; }
     * { box-sizing: border-box; }
+    [hidden] { display:none !important; }
     body { margin:0; font:14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--ink); }
     header { padding:16px 24px; background:var(--card); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
     header h1 { font-size:18px; margin:0; }
@@ -14,33 +15,67 @@
     .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:20px; }
     .row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
     .spacer { flex:1; }
-    button, .btn { font:inherit; border:1px solid var(--line); background:var(--card); padding:8px 14px; border-radius:8px; cursor:pointer; color:var(--ink); text-decoration:none; }
+    button, .btn { font:inherit; border:1px solid var(--line); background:var(--card); padding:8px 14px; border-radius:8px; cursor:pointer; color:var(--ink); text-decoration:none; display:inline-block; }
     .primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
-    button:disabled { opacity:.6; cursor:wait; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
     .muted { color:var(--muted); }
     .pill { display:inline-block; padding:2px 8px; border-radius:99px; background:#eee; font-size:12px; }
     .pill.active { background:#e3f4ea; color:var(--ok); }
     .pill.draft { background:#eef; color:#446; }
     .pill.sold_out, .pill.expired, .pill.inactive { background:#fbeaea; color:var(--err); }
+    .lang { display:inline-block; padding:1px 6px; margin:1px; border-radius:4px; background:#eef3ff; color:#2b4a9b; font-size:11px; font-weight:600; text-transform:uppercase; }
     .msg { padding:10px 14px; border-radius:8px; margin-bottom:16px; }
     .msg.err { background:#fbeaea; color:var(--err); }
     .msg.ok { background:#e3f4ea; color:var(--ok); }
+    .msg.warn { background:#fff6e0; color:#7a5300; }
     .stats { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
     .stat { border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-width:90px; }
     .stat b { display:block; font-size:18px; }
-    input, select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+    input, select, textarea { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+    input[type=checkbox] { width:16px; height:16px; padding:0; accent-color:var(--accent); cursor:pointer; }
     .table-wrap { overflow-x:auto; }
     table { width:100%; border-collapse:collapse; }
     th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:middle; }
     th { font-size:12px; text-transform:uppercase; color:var(--muted); }
-    td img { width:56px; height:44px; object-fit:cover; border-radius:4px; background:#eee; }
+    tr.selected td { background:var(--sel); }
+    td img { width:56px; height:44px; object-fit:cover; border-radius:4px; background:#eee; display:block; }
     td.title a { color:var(--ink); }
+    .selbar { position:sticky; top:0; z-index:5; background:var(--ink); color:#fff; border-radius:8px; padding:10px 14px; margin-bottom:12px; }
+    .selbar button { border-color:#555; background:#2c2c2a; color:#fff; }
+    .selbar .primary { background:var(--accent); border-color:var(--accent); }
+
+    dialog { width:min(920px, calc(100vw - 32px)); max-height:calc(100vh - 48px); border:none; border-radius:12px; padding:0; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    dialog::backdrop { background:rgba(0,0,0,.4); }
+    .dlg-head { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+    .dlg-head h2 { margin:0; font-size:17px; }
+    .dlg-body { padding:20px; overflow:auto; max-height:calc(100vh - 200px); }
+    .dlg-foot { padding:14px 20px; border-top:1px solid var(--line); display:flex; gap:10px; align-items:center; }
+    .langs { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; margin:12px 0; }
+    .langs label { display:flex; gap:8px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; }
+    .langs label:has(input:checked) { border-color:var(--accent); background:var(--sel); }
+    .progress { height:8px; background:#eee; border-radius:99px; overflow:hidden; margin:12px 0 6px; }
+    .progress div { height:100%; background:var(--accent); width:0; transition:width .3s; }
+    .preview-listing { border:1px solid var(--line); border-radius:10px; margin-bottom:14px; }
+    .preview-listing > h3 { margin:0; padding:10px 14px; font-size:14px; background:#fafaf8; border-bottom:1px solid var(--line); border-radius:10px 10px 0 0; }
+    .preview-lang { padding:12px 14px; border-bottom:1px solid var(--line); display:grid; gap:6px; }
+    .preview-lang:last-child { border-bottom:none; }
+    .preview-lang.skip > :not(.lang-head) { opacity:.4; }
+    .lang-head { display:flex; align-items:center; gap:8px; font-weight:600; }
+    .preview-lang input[type=text], .preview-lang textarea { width:100%; }
+    .preview-lang textarea { min-height:90px; resize:vertical; }
+    .hint { font-size:12px; color:var(--muted); }
+    .hint.bad { color:var(--err); }
+    ul.errors { margin:8px 0 0; padding-left:18px; color:var(--err); }
   </style>
 </head>
 <body>
   <header><h1>DsquareTech CRM</h1><span class="muted">Etsy integration</span></header>
   <main>
     <div id="flash"></div>
+    <div id="write-banner" class="msg warn" hidden>
+      To update listings, reconnect your shop once so Etsy grants edit permission.
+      <a class="btn primary" href="/auth/etsy" style="margin-left:8px">Reconnect shop</a>
+    </div>
 
     <section class="card" id="connect-card">
       <div class="row">
@@ -57,6 +92,12 @@
     </section>
 
     <section class="card" id="listings-card" hidden>
+      <div class="selbar row" id="selbar" hidden>
+        <b id="sel-count"></b>
+        <button id="sel-clear">Clear</button>
+        <div class="spacer"></div>
+        <button class="primary" id="translate-btn">Translate &amp; update selected</button>
+      </div>
       <div class="row" style="margin-bottom:12px">
         <input id="search" placeholder="Search title or SKU" />
         <select id="state-filter">
@@ -70,26 +111,50 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th></th><th>Title</th><th>State</th><th>Price</th><th>Qty</th><th>SKU</th><th>Views</th><th>Favs</th></tr></thead>
+          <thead><tr>
+            <th><input type="checkbox" id="select-all" title="Select all shown" /></th>
+            <th></th><th>Title</th><th>State</th><th>Price</th><th>Qty</th><th>SKU</th><th>Translations</th>
+          </tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
     </section>
   </main>
 
+  <dialog id="dlg">
+    <div class="dlg-head"><h2 id="dlg-title">Translate listings</h2><div class="spacer"></div><button id="dlg-close" aria-label="Close">✕</button></div>
+    <div class="dlg-body" id="dlg-body"></div>
+    <div class="dlg-foot" id="dlg-foot"></div>
+  </dialog>
+
   <script>
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    const decode = (s) => { const t = document.createElement('textarea'); t.innerHTML = s ?? ''; return t.value; };
+
+    let status = {};
+    let shown = [];               // listings currently in the table
+    const selected = new Set();   // listing_ids, kept across search/filter changes
+    let busy = false;             // a translate/publish job is running
 
     function flash(text, kind) {
       $('flash').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : '';
     }
 
+    async function api(url, body) {
+      const r = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      return data;
+    }
+
     async function loadStatus() {
-      const s = await (await fetch('/api/etsy/status')).json();
+      status = await api('/api/etsy/status');
+      const s = status;
       $('connect-btn').hidden = s.connected;
       $('sync-btn').hidden = $('disconnect-btn').hidden = !s.connected;
       $('listings-card').hidden = !s.connected;
+      $('write-banner').hidden = !s.connected || s.canWrite;
       if (!s.connected) {
         $('shop-info').textContent = 'No shop connected. Click "Connect Etsy shop" to authorize in one step.';
         if (s.setupProblem && !$('flash').textContent) flash('Setup needed: ' + s.setupProblem + ' Then restart the app.', 'err');
@@ -108,29 +173,214 @@
       const params = new URLSearchParams();
       if ($('search').value) params.set('q', $('search').value);
       if ($('state-filter').value) params.set('state', $('state-filter').value);
-      const { total, listings } = await (await fetch('/api/etsy/listings?' + params)).json();
+      const { total, listings } = await api('/api/etsy/listings?' + params);
+      shown = listings;
       $('count').textContent = `${total} listing${total === 1 ? '' : 's'}`;
       $('rows').innerHTML = listings.map((l) => `
-        <tr>
+        <tr data-id="${l.listing_id}" class="${selected.has(l.listing_id) ? 'selected' : ''}">
+          <td><input type="checkbox" class="pick" ${selected.has(l.listing_id) ? 'checked' : ''} aria-label="Select listing"></td>
           <td>${l.image ? `<img src="${esc(l.image)}" alt="" loading="lazy">` : ''}</td>
-          <td class="title"><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></td>
+          <td class="title"><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(decode(l.title))}</a></td>
           <td><span class="pill ${esc(l.state)}">${esc(l.state)}</span></td>
           <td>${l.price != null ? esc(l.price.toFixed(2) + ' ' + (l.currency || '')) : ''}</td>
           <td>${esc(l.quantity)}</td>
           <td>${esc(l.sku)}</td>
-          <td>${esc(l.views)}</td>
-          <td>${esc(l.num_favorers)}</td>
+          <td>${l.translations.map((c) => `<span class="lang">${esc(c)}</span>`).join('')}</td>
         </tr>`).join('');
+      updateSelection();
     }
+
+    function updateSelection() {
+      const n = selected.size;
+      $('selbar').hidden = n === 0;
+      $('sel-count').textContent = `${n} selected`;
+      const shownSel = shown.filter((l) => selected.has(l.listing_id)).length;
+      $('select-all').checked = shown.length > 0 && shownSel === shown.length;
+      $('select-all').indeterminate = shownSel > 0 && shownSel < shown.length;
+    }
+
+    $('rows').addEventListener('click', (e) => {
+      const tr = e.target.closest('tr');
+      if (!tr || e.target.closest('a')) return;
+      const id = Number(tr.dataset.id);
+      const box = tr.querySelector('.pick');
+      if (e.target !== box) box.checked = !box.checked;
+      box.checked ? selected.add(id) : selected.delete(id);
+      tr.classList.toggle('selected', box.checked);
+      updateSelection();
+    });
+    $('select-all').onchange = (e) => {
+      for (const l of shown) e.target.checked ? selected.add(l.listing_id) : selected.delete(l.listing_id);
+      loadListings();
+    };
+    $('sel-clear').onclick = () => { selected.clear(); loadListings(); };
+
+    // ---------- Translate dialog ----------
+
+    const dlg = $('dlg');
+    const body = (html) => { $('dlg-body').innerHTML = html; };
+    const foot = (html) => { $('dlg-foot').innerHTML = html; };
+    let drafts = [];  // [{ listing_id, source, translations: {code: {title, description, tags}} }]
+
+    $('dlg-close').onclick = () => {
+      if (busy && !confirm('A job is still running in the background. Close anyway?')) return;
+      dlg.close();
+    };
+    dlg.addEventListener('cancel', (e) => { if (busy) e.preventDefault(); });
+
+    $('translate-btn').onclick = () => {
+      if (!status.canWrite) return flash('Reconnect your shop first so the app can update listings.', 'err');
+      if (status.geminiProblem) return flash(status.geminiProblem, 'err');
+      showLanguageStep();
+      dlg.showModal();
+    };
+
+    function showLanguageStep() {
+      $('dlg-title').textContent = `Translate ${selected.size} listing${selected.size === 1 ? '' : 's'}`;
+      const shopLangs = (status.shop.languages || []).map((c) => c.split('-')[0]);
+      const remembered = JSON.parse(localStorageGet('langs') || '[]');
+      body(`
+        <p style="margin-top:0">Choose the languages. Gemini will translate the <b>title, description and tags</b>.
+        You can review and edit everything before anything changes on Etsy.</p>
+        <div class="langs">${Object.entries(status.translationLanguages).map(([code, name]) => `
+          <label><input type="checkbox" value="${code}" ${remembered.includes(code) ? 'checked' : ''}>
+          ${esc(name)} <span class="muted">${code}</span>
+          ${shopLangs.length && !shopLangs.includes(code) ? '<span class="hint" title="Not enabled in your Etsy shop language settings">⚠</span>' : ''}</label>`).join('')}
+        </div>
+        <p class="hint">Languages marked ⚠ are not enabled in your Etsy shop settings (Shop Manager → Settings → Info &amp; Appearance → Languages); Etsy may reject them.
+        A listing is skipped for its own language.</p>`);
+      foot(`<div class="spacer"></div><button id="gen-btn" class="primary">Generate translations</button>`);
+      $('gen-btn').onclick = generate;
+    }
+
+    function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+    function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
+
+    async function runJob(startUrl, payload, label) {
+      busy = true;
+      body(`<p>${esc(label)}</p><div class="progress"><div id="bar"></div></div><div id="prog" class="muted">Starting…</div>`);
+      foot('');
+      try {
+        const { jobId } = await api(startUrl, payload);
+        for (;;) {
+          const job = await api('/api/jobs/' + jobId);
+          $('bar').style.width = `${(job.done / job.total) * 100}%`;
+          $('prog').textContent = `${job.done} of ${job.total} done${job.errors.length ? ` · ${job.errors.length} failed` : ''}`;
+          if (job.status === 'done') return job;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      } finally {
+        busy = false;
+      }
+    }
+
+    async function generate() {
+      const languages = [...$('dlg-body').querySelectorAll('.langs input:checked')].map((i) => i.value);
+      if (!languages.length) return alert('Choose at least one language');
+      localStorageSet('langs', JSON.stringify(languages));
+      try {
+        const job = await runJob('/api/etsy/translations/generate', { listingIds: [...selected], languages },
+          `Translating ${selected.size} listing(s) into ${languages.length} language(s) with Gemini…`);
+        drafts = job.results;
+        showPreview(job.errors);
+      } catch (e) {
+        body(`<div class="msg err">${esc(e.message)}</div>`);
+        foot(`<div class="spacer"></div><button id="back-btn">Back</button>`);
+        $('back-btn').onclick = showLanguageStep;
+      }
+    }
+
+    function errorList(errors, describe) {
+      if (!errors.length) return '';
+      return `<div class="msg err"><b>${errors.length} failed</b><ul class="errors">${errors.map((e) => `<li>${esc(describe(e.item))}: ${esc(e.error)}</li>`).join('')}</ul></div>`;
+    }
+
+    function showPreview(errors = []) {
+      const titleOf = (id) => decode(shown.find((l) => l.listing_id === id)?.title || drafts.find((d) => d.listing_id === id)?.source.title || `#${id}`);
+      $('dlg-title').textContent = 'Review translations';
+      body(errorList(errors, (l) => decode(l.title)) +
+        (drafts.length ? '<p style="margin-top:0" class="muted">Edit anything you like. Untick a language to skip it. Nothing is saved to Etsy until you click Publish.</p>' : '') +
+        drafts.map((d) => `
+          <div class="preview-listing">
+            <h3>${esc(titleOf(d.listing_id))}</h3>
+            ${Object.entries(d.translations).map(([code, t]) => `
+              <div class="preview-lang" data-id="${d.listing_id}" data-lang="${code}">
+                <label class="lang-head"><input type="checkbox" class="include" checked> <span class="lang">${code}</span> ${esc(status.translationLanguages[code])}</label>
+                <input type="text" class="f-title" value="${esc(t.title)}" maxlength="140" aria-label="Title">
+                <span class="hint t-count"></span>
+                <textarea class="f-desc" aria-label="Description">${esc(t.description)}</textarea>
+                <input type="text" class="f-tags" value="${esc(t.tags.join(', '))}" aria-label="Tags">
+                <span class="hint g-count"></span>
+              </div>`).join('')}
+          </div>`).join(''));
+      $('dlg-body').querySelectorAll('.preview-lang').forEach(validateBlock);
+      $('dlg-body').oninput = (e) => { const b = e.target.closest('.preview-lang'); if (b) validateBlock(b); };
+      $('dlg-body').onchange = (e) => { if (e.target.matches('.include')) { e.target.closest('.preview-lang').classList.toggle('skip', !e.target.checked); countPublish(); } };
+      foot(`<button id="back-btn">Back</button><div class="spacer"></div><span id="pub-count" class="muted"></span>
+            <button id="pub-btn" class="primary">Publish to Etsy</button>`);
+      $('back-btn').onclick = showLanguageStep;
+      $('pub-btn').onclick = publish;
+      countPublish();
+    }
+
+    function tagsOf(block) { return block.querySelector('.f-tags').value.split(',').map((t) => t.trim()).filter(Boolean); }
+
+    function validateBlock(b) {
+      const title = b.querySelector('.f-title').value;
+      const tc = b.querySelector('.t-count');
+      tc.textContent = `Title ${title.length}/140`;
+      const tags = tagsOf(b);
+      const long = tags.filter((t) => t.length > 20);
+      const gc = b.querySelector('.g-count');
+      gc.textContent = `Tags ${tags.length}/13, comma separated` + (long.length ? ` · too long (max 20): ${long.join(', ')}` : '') + (tags.length > 13 ? ' · only the first 13 are used' : '');
+      gc.classList.toggle('bad', long.length > 0 || tags.length > 13);
+    }
+
+    function selectedItems() {
+      return [...$('dlg-body').querySelectorAll('.preview-lang')].filter((b) => b.querySelector('.include').checked).map((b) => ({
+        listing_id: Number(b.dataset.id),
+        language: b.dataset.lang,
+        title: b.querySelector('.f-title').value,
+        description: b.querySelector('.f-desc').value,
+        tags: tagsOf(b),
+      }));
+    }
+
+    function countPublish() {
+      const n = selectedItems().length;
+      $('pub-count').textContent = `${n} translation${n === 1 ? '' : 's'}`;
+      $('pub-btn').disabled = n === 0;
+    }
+
+    async function publish() {
+      const items = selectedItems();
+      const listings = new Set(items.map((i) => i.listing_id)).size;
+      if (!confirm(`Update ${items.length} translation(s) on ${listings} live Etsy listing(s)?`)) return;
+      try {
+        const job = await runJob('/api/etsy/translations/publish', { items }, `Updating ${items.length} translation(s) on Etsy…`);
+        const ok = job.results.length;
+        $('dlg-title').textContent = 'Done';
+        body((ok ? `<div class="msg ok">Updated ${ok} translation${ok === 1 ? '' : 's'} on Etsy.</div>` : '') +
+          errorList(job.errors, (i) => `${decode(shown.find((l) => l.listing_id === i.listing_id)?.title || '#' + i.listing_id)} (${i.language})`));
+        foot(`<div class="spacer"></div><button id="done-btn" class="primary">Close</button>`);
+        $('done-btn').onclick = () => dlg.close();
+        if (!job.errors.length) selected.clear();
+        loadListings();
+      } catch (e) {
+        body(`<div class="msg err">${esc(e.message)}</div>`);
+        foot(`<div class="spacer"></div><button id="back-btn">Back to review</button>`);
+        $('back-btn').onclick = () => showPreview();
+      }
+    }
+
+    // ---------- Shop actions ----------
 
     $('sync-btn').onclick = async () => {
       const btn = $('sync-btn');
       btn.disabled = true; btn.textContent = 'Syncing…';
       try {
-        const r = await fetch('/api/etsy/listings/sync', { method: 'POST' });
-        const body = await r.json();
-        if (!r.ok) throw new Error(body.error);
-        flash(`Synced ${body.total} listings`, 'ok');
+        const r = await api('/api/etsy/listings/sync', {});
+        flash(`Synced ${r.total} listings`, 'ok');
       } catch (e) { flash(e.message, 'err'); }
       btn.disabled = false; btn.textContent = 'Sync all listings';
       loadStatus();
@@ -138,7 +388,8 @@
 
     $('disconnect-btn').onclick = async () => {
       if (!confirm('Disconnect this Etsy shop and remove cached listings?')) return;
-      await fetch('/auth/etsy/disconnect', { method: 'POST' });
+      await api('/auth/etsy/disconnect', {});
+      selected.clear();
       flash('Shop disconnected', 'ok');
       loadStatus();
     };
