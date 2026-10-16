@@ -31,7 +31,7 @@ Rate limits (429) and 5xx errors are retried with backoff.
 `TRANSLATE_DELAY_MS` (default 1 second) pause between requests. The app works through a chain:
 API key 1 with every model in `GEMINI_MODELS` (default: 3.5 Flash Lite → 3.1 Flash Lite →
 2.5 Flash Lite → 3.6 Flash → 3 Flash → 3.7 Flash → 3.8 Flash), then key 2 with every model, up
-to `GEMINI_API_KEY_5`. Last comes OpenAI, if `OPENAI_API_KEY` is set.
+to `GEMINI_API_KEY_5`.
 
 - **Limit reached (429):** that model/key pauses (1 minute, or 24 hours for a daily limit). The
   **same listing is retried** on the next model/key, so nothing is skipped.

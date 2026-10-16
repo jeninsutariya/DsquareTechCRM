@@ -209,7 +209,7 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
   res.send(csv);
 });
 
-// ---- Listing translation (Gemini/OpenAI chain -> Etsy) ----
+// ---- Listing translation (Gemini model/key chain -> Etsy) ----
 
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 

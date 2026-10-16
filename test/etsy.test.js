@@ -8,10 +8,12 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'etsy-test-'));
 process.env.ETSY_API_KEY = 'key123';
 process.env.ETSY_SHARED_SECRET = 'secret';
 process.env.ETSY_REDIRECT_URI = 'http://localhost/auth/etsy/callback';
-process.env.OPENAI_API_KEY = 'openai-key';
-process.env.OPENAI_DELAY_MS = '150';
-const openaiCalls = []; // { start, end } of each fake OpenAI request
-delete process.env.OPENAI_MODEL;
+process.env.GEMINI_API_KEY_1 = 'gem-key';
+process.env.GEMINI_MODELS = 'test-model';
+process.env.TRANSLATE_DELAY_MS = '150';
+delete process.env.GEMINI_API_KEY;
+delete process.env.GEMINI_API_KEYS;
+const aiCalls = []; // { start, end } of each fake Gemini request
 const etsyTranslations = new Map(); // "listing:lang" -> form fields
 
 // Fake Etsy: 250 active listings (3 pages), 2 drafts, nothing else.
@@ -23,35 +25,28 @@ global.fetch = async (input, init = {}) => {
   calls.push({ url, init });
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-  if (url.hostname === 'api.openai.com') {
+  if (url.hostname === 'generativelanguage.googleapis.com') {
     const call = { start: Date.now() };
-    openaiCalls.push(call);
+    aiCalls.push(call);
     await new Promise((r) => setTimeout(r, 30));
     call.end = Date.now();
-    assert.equal(url.pathname, '/v1/responses');
-    assert.equal(new Headers(init.headers).get('authorization'), 'Bearer openai-key');
+    assert.equal(url.pathname, '/v1beta/models/test-model:generateContent');
+    assert.equal(init.headers['x-goog-api-key'], 'gem-key');
     const req = JSON.parse(init.body);
-    assert.equal(req.model, 'gpt-5.5');
-    assert.equal(req.text.format.type, 'json_schema');
-    assert.equal(req.text.format.strict, true);
-    const langs = req.text.format.schema.required;
-    const prompt = req.input;
+    assert.equal(req.generationConfig.responseMimeType, 'application/json');
+    const langs = req.generationConfig.responseSchema.required;
+    const prompt = req.contents[0].parts[0].text;
     if (prompt.includes('FAILME')) {
       // Unparseable output: this listing fails, the others continue.
-      return json({ id: 'resp_x', object: 'response', status: 'completed', model: req.model,
-        output: [{ id: 'msg_x', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'not json', annotations: [] }] }] });
+      return json({ candidates: [{ content: { parts: [{ text: 'not json' }] } }] });
     }
     assert.match(prompt, /Tom's mug & cup/); // HTML entities decoded before translating
     const out = Object.fromEntries(langs.map((l) => [l, {
-      title: `<${l}> gpt title`,
-      description: `<${l}> gpt description`,
+      title: `<${l}> ai title`,
+      description: `<${l}> ai description`,
       tags: ['good tag', 'way too long tag for etsy rules', 'bad!chars', 'good tag', ...Array.from({ length: 15 }, (_, i) => `t${i}`)],
     }]));
-    return json({
-      id: 'resp_1', object: 'response', created_at: 0, status: 'completed', model: req.model,
-      output: [{ id: 'msg_1', type: 'message', role: 'assistant', status: 'completed',
-        content: [{ type: 'output_text', text: JSON.stringify(out), annotations: [] }] }],
-    });
+    return json({ candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] });
   }
   if (url.pathname === '/v3/public/oauth/token') {
     const body = new URLSearchParams(init.body);
@@ -138,7 +133,7 @@ async function waitJob(base, jobId) {
   }
 }
 
-test('translate selected listings with ChatGPT, then publish to Etsy', async (t) => {
+test('translate selected listings with Gemini, then publish to Etsy', async (t) => {
   const server = app.listen(0);
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -147,27 +142,27 @@ test('translate selected listings with ChatGPT, then publish to Etsy', async (t)
   assert.equal(status.canWrite, true);
   assert.strictEqual(status.translateProblem, null);
 
-  // Listing 1 makes OpenAI fail; that must not stop the others. 'en' and unknown codes are ignored.
+  // Listing 1 makes Gemini return bad output; that must not stop the others. 'en' and unknown codes are ignored.
   let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2], languages: ['de', 'sv', 'en', 'xx'] });
   const gen = await waitJob(base, (await r.json()).jobId);
   assert.equal(gen.results.length, 2);
   assert.equal(gen.errors.length, 1);
-  assert.match(gen.errors[0].error, /Translation failed on every model: gpt-5.5 · OpenAI/);
+  assert.match(gen.errors[0].error, /Translation failed on every model: test-model · key 1: invalid JSON/);
   assert.equal(gen.stopped, null);
-  assert.equal(draft0Engine(gen), 'gpt-5.5 · OpenAI');
+  assert.equal(draft0Engine(gen), 'test-model · key 1');
   const draft = gen.results.find((d) => d.listing_id === 0);
   assert.deepEqual(Object.keys(draft.translations).sort(), ['de', 'sv']);
-  assert.equal(draft.translations.sv.title, '<sv> gpt title');
+  assert.equal(draft.translations.sv.title, '<sv> ai title');
   const tags = draft.translations.de.tags;
   assert.equal(tags.length, 13);
   assert.equal(tags[0], 'good tag');
   assert.ok(tags.every((tg) => tg.length <= 20 && !tg.includes('!')));
   assert.equal(etsyTranslations.size, 0, 'generating must not change Etsy');
 
-  // One OpenAI request at a time, each starting >= OPENAI_DELAY_MS after the previous ended.
-  assert.equal(openaiCalls.length, 3);
-  for (let i = 1; i < openaiCalls.length; i++) {
-    assert.ok(openaiCalls[i].start - openaiCalls[i - 1].end >= 145, `gap ${openaiCalls[i].start - openaiCalls[i - 1].end}ms`);
+  // One AI request at a time, each starting >= TRANSLATE_DELAY_MS after the previous ended.
+  assert.equal(aiCalls.length, 3);
+  for (let i = 1; i < aiCalls.length; i++) {
+    assert.ok(aiCalls[i].start - aiCalls[i - 1].end >= 145, `gap ${aiCalls[i].start - aiCalls[i - 1].end}ms`);
   }
 
   // Publish: first time creates (PUT 404 -> POST), second time updates via PUT.

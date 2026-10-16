@@ -1,11 +1,10 @@
 const gemini = require('./gemini');
-const openai = require('./openaiTranslate');
 const { buildPrompt, cleanTitle, cleanTags, decodeEntities } = require('./listingText');
 
 /**
  * Translation runs through a chain of (API key × model) combinations:
  * key 1 with every model in GEMINI_MODELS order, then key 2 with every model, ...
- * and finally OpenAI if OPENAI_API_KEY is set. When a combination hits its limit,
+ * and so on. When a combination hits its limit,
  * the same listing is retried on the next one, so no listing is skipped. When
  * every combination is used up, translating stops (StopError).
  */
@@ -50,11 +49,6 @@ function buildChain() {
       chain.push({ id: `gemini|${i + 1}|${model}`, provider: 'gemini', model, key, label: `${model} · key ${i + 1}` });
     }
   });
-  const openaiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!isPlaceholder(openaiKey)) {
-    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.5';
-    chain.push({ id: `openai|1|${model}`, provider: 'openai', model, key: openaiKey, label: `${model} · OpenAI` });
-  }
   return chain;
 }
 
@@ -68,7 +62,7 @@ const coolingFor = (c, now) => Math.max(0, (cooldownUntil.get(c.id) || 0) - now)
 
 function setupProblem() {
   if (buildChain().length) return null;
-  return 'No translation API key in .env. Add GEMINI_API_KEY_1 (up to GEMINI_API_KEY_5) and/or OPENAI_API_KEY, then restart the app.';
+  return 'No translation API key in .env. Add GEMINI_API_KEY_1 (up to GEMINI_API_KEY_5), then restart the app.';
 }
 
 /** Chain overview for the dashboard. */
@@ -82,7 +76,7 @@ function chainStatus() {
 
 // One request at a time; the next starts TRANSLATE_DELAY_MS (default 1s) after the previous finished.
 let queue = Promise.resolve();
-const delayMs = () => Number(process.env.TRANSLATE_DELAY_MS ?? process.env.OPENAI_DELAY_MS ?? 1000);
+const delayMs = () => Number(process.env.TRANSLATE_DELAY_MS ?? 1000);
 function oneAtATime(fn) {
   const run = queue.then(fn);
   queue = run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, delayMs())));
@@ -129,8 +123,7 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
 
     onAttempt?.(combo.label);
     try {
-      const provider = combo.provider === 'gemini' ? gemini : openai;
-      const raw = await oneAtATime(() => provider.requestTranslation(combo, prompt, languages));
+      const raw = await oneAtATime(() => gemini.requestTranslation(combo, prompt, languages));
       const translations = {};
       for (const { code } of languages) {
         const t = raw?.[code];
