@@ -6,7 +6,7 @@ loadEnv();
 const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
-const claude = require('./claudeTranslate');
+const openai = require('./openaiTranslate');
 const { cleanTitle, cleanTags, decodeEntities } = require('./listingText');
 const { startJob, getJob } = require('./jobs');
 
@@ -130,7 +130,7 @@ app.get('/api/etsy/status', (req, res) => {
   const { shop, connectedAt, lastSyncAt, lastSyncError, counts, listings, scopes } = store.load();
   res.json({
     setupProblem: etsySetupProblem(),
-    translateProblem: claude.claudeSetupProblem(),
+    translateProblem: openai.openaiSetupProblem(),
     // Shops connected before write access was added must reconnect once.
     canWrite: Boolean(scopes?.includes('listings_w')),
     translationLanguages: etsy.TRANSLATION_LANGUAGES,
@@ -182,13 +182,13 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
   res.send(csv);
 });
 
-// ---- Listing translation (Claude -> Etsy) ----
+// ---- Listing translation (OpenAI -> Etsy) ----
 
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 
-/** Step 1: ask Claude for translations of the selected listings. Nothing is changed on Etsy yet. */
+/** Step 1: ask OpenAI (ChatGPT) for translations of the selected listings. Nothing is changed on Etsy yet. */
 app.post('/api/etsy/translations/generate', (req, res) => {
-  const problem = claude.claudeSetupProblem();
+  const problem = openai.openaiSetupProblem();
   if (problem) return res.status(400).json({ error: problem });
 
   const { listingIds = [], languages = [] } = req.body || {};
@@ -207,7 +207,7 @@ app.post('/api/etsy/translations/generate', (req, res) => {
     return {
       listing_id: listing.listing_id,
       source: { title: decodeEntities(listing.title), language: listing.language },
-      translations: await claude.translateListing(listing, targets),
+      translations: await openai.translateListing(listing, targets),
     };
   });
   res.json({ jobId: job.id });

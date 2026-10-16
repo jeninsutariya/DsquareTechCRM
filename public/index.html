@@ -240,7 +240,7 @@
       const shopLangs = (status.shop.languages || []).map((c) => c.split('-')[0]);
       const remembered = JSON.parse(localStorageGet('langs') || '[]');
       body(`
-        <p style="margin-top:0">Choose the languages. Claude will translate the <b>title, description and tags</b>.
+        <p style="margin-top:0">Choose the languages. ChatGPT (OpenAI) will translate the <b>title, description and tags</b>.
         You can review and edit everything before anything changes on Etsy.</p>
         <div class="langs">${Object.entries(status.translationLanguages).map(([code, name]) => `
           <label><input type="checkbox" value="${code}" ${remembered.includes(code) ? 'checked' : ''}>
@@ -280,7 +280,7 @@
       localStorageSet('langs', JSON.stringify(languages));
       try {
         const job = await runJob('/api/etsy/translations/generate', { listingIds: [...selected], languages },
-          `Translating ${selected.size} listing(s) into ${languages.length} language(s) with Claude…`);
+          `Translating ${selected.size} listing(s) into ${languages.length} language(s) with ChatGPT…`);
         drafts = job.results;
         showPreview(job.errors);
       } catch (e) {

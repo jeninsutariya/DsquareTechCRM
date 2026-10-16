@@ -8,8 +8,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'etsy-test-'));
 process.env.ETSY_API_KEY = 'key123';
 process.env.ETSY_SHARED_SECRET = 'secret';
 process.env.ETSY_REDIRECT_URI = 'http://localhost/auth/etsy/callback';
-process.env.ANTHROPIC_API_KEY = 'claude-key';
-delete process.env.CLAUDE_MODEL;
+process.env.OPENAI_API_KEY = 'openai-key';
+delete process.env.OPENAI_MODEL;
 const etsyTranslations = new Map(); // "listing:lang" -> form fields
 
 // Fake Etsy: 250 active listings (3 pages), 2 drafts, nothing else.
@@ -21,39 +21,29 @@ global.fetch = async (input, init = {}) => {
   calls.push({ url, init });
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-  if (url.hostname === 'api.anthropic.com') {
-    assert.equal(url.pathname, '/v1/messages');
-    const h = new Headers(init.headers);
-    assert.equal(h.get('x-api-key'), 'claude-key');
-    assert.match(h.get('anthropic-beta'), /server-side-fallback-2026-07-01/);
+  if (url.hostname === 'api.openai.com') {
+    assert.equal(url.pathname, '/v1/responses');
+    assert.equal(new Headers(init.headers).get('authorization'), 'Bearer openai-key');
     const req = JSON.parse(init.body);
-    assert.equal(req.model, 'claude-opus-5-5');
-    assert.equal(req.stream, true);
-    assert.equal(req.fallbacks, 'default');
-    assert.equal(req.output_config.format.type, 'json_schema');
-    const langs = req.output_config.format.schema.required;
-    const prompt = req.messages[0].content;
+    assert.equal(req.model, 'gpt-5.5');
+    assert.equal(req.text.format.type, 'json_schema');
+    assert.equal(req.text.format.strict, true);
+    const langs = req.text.format.schema.required;
+    const prompt = req.input;
     if (prompt.includes('FAILME')) {
-      return json({ type: 'error', error: { type: 'invalid_request_error', message: 'credit balance too low' } }, 400);
+      return json({ error: { message: 'You exceeded your current quota', type: 'insufficient_quota', code: 'insufficient_quota' } }, 400);
     }
     assert.match(prompt, /Tom's mug & cup/); // HTML entities decoded before translating
     const out = Object.fromEntries(langs.map((l) => [l, {
-      title: `<${l}> claude title`,
-      description: `<${l}> claude description`,
+      title: `<${l}> gpt title`,
+      description: `<${l}> gpt description`,
       tags: ['good tag', 'way too long tag for etsy rules', 'bad!chars', 'good tag', ...Array.from({ length: 15 }, (_, i) => `t${i}`)],
     }]));
-    const text = JSON.stringify(out);
-    const ev = (type, data) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
-    const sse = [
-      ev('message_start', { message: { id: 'msg_1', type: 'message', role: 'assistant', model: req.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } }),
-      ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }),
-      ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: text.slice(0, 20) } }),
-      ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: text.slice(20) } }),
-      ev('content_block_stop', { index: 0 }),
-      ev('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 50 } }),
-      ev('message_stop', {}),
-    ].join('');
-    return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    return json({
+      id: 'resp_1', object: 'response', created_at: 0, status: 'completed', model: req.model,
+      output: [{ id: 'msg_1', type: 'message', role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text: JSON.stringify(out), annotations: [] }] }],
+    });
   }
   if (url.pathname === '/v3/public/oauth/token') {
     const body = new URLSearchParams(init.body);
@@ -138,7 +128,7 @@ async function waitJob(base, jobId) {
   }
 }
 
-test('translate selected listings with Claude, then publish to Etsy', async (t) => {
+test('translate selected listings with ChatGPT, then publish to Etsy', async (t) => {
   const server = app.listen(0);
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -147,15 +137,15 @@ test('translate selected listings with Claude, then publish to Etsy', async (t) 
   assert.equal(status.canWrite, true);
   assert.strictEqual(status.translateProblem, null);
 
-  // Listing 1 makes Claude fail; that must not stop the others. 'en' and unknown codes are ignored.
+  // Listing 1 makes OpenAI fail; that must not stop the others. 'en' and unknown codes are ignored.
   let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2], languages: ['de', 'sv', 'en', 'xx'] });
   const gen = await waitJob(base, (await r.json()).jobId);
   assert.equal(gen.results.length, 2);
   assert.equal(gen.errors.length, 1);
-  assert.match(gen.errors[0].error, /Claude 400: .*credit balance too low/);
+  assert.match(gen.errors[0].error, /OpenAI 400: .*exceeded your current quota/);
   const draft = gen.results.find((d) => d.listing_id === 0);
   assert.deepEqual(Object.keys(draft.translations).sort(), ['de', 'sv']);
-  assert.equal(draft.translations.sv.title, '<sv> claude title');
+  assert.equal(draft.translations.sv.title, '<sv> gpt title');
   const tags = draft.translations.de.tags;
   assert.equal(tags.length, 13);
   assert.equal(tags[0], 'good tag');
