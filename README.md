@@ -28,7 +28,11 @@ npm install
 npm start              # open http://localhost:3000
 ```
 
-Requires Node.js 20+ (22.9+ for automatic `.env` loading via `npm start`).
+Requires Node.js 20+. The app reads `.env` from the project folder automatically.
+
+If the page shows **Setup needed**, the message says what to fix. The most common cause on
+macOS is TextEdit saving the file as `.env.txt` or `.env.rtf`. Create it from the terminal instead:
+`cp .env.example .env && open -e .env`, then save it as plain text.
 
 ### API
 

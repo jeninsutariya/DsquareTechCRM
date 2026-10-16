@@ -92,6 +92,7 @@
       $('listings-card').hidden = !s.connected;
       if (!s.connected) {
         $('shop-info').textContent = 'No shop connected. Click "Connect Etsy shop" to authorize in one step.';
+        if (s.setupProblem && !$('flash').textContent) flash('Setup needed: ' + s.setupProblem + ' Then restart the app.', 'err');
         $('stats').innerHTML = '';
         return;
       }

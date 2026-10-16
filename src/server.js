@@ -1,4 +1,8 @@
 const path = require('node:path');
+const { loadEnv, etsySetupProblem } = require('./env');
+
+loadEnv();
+
 const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
@@ -61,6 +65,9 @@ function toRow(l) {
 // ---- OAuth: one click to connect ----
 
 app.get('/auth/etsy', (req, res) => {
+  const problem = etsySetupProblem();
+  if (problem) return res.redirect(`/?error=${encodeURIComponent(problem)}`);
+
   const now = Date.now();
   for (const [s, v] of pendingAuth) if (now - v.createdAt > AUTH_TTL_MS) pendingAuth.delete(s);
 
@@ -109,6 +116,7 @@ app.post('/auth/etsy/disconnect', (req, res) => {
 app.get('/api/etsy/status', (req, res) => {
   const { shop, connectedAt, lastSyncAt, lastSyncError, counts, listings } = store.load();
   res.json({
+    setupProblem: etsySetupProblem(),
     connected: Boolean(shop),
     shop: shop || null,
     connectedAt: connectedAt || null,
@@ -161,6 +169,8 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`DsquareTech CRM running at http://localhost:${PORT}`);
+    const problem = etsySetupProblem();
+    if (problem) console.warn(`[etsy] Setup needed: ${problem}`);
     if (SYNC_INTERVAL_MINUTES > 0) {
       setInterval(() => {
         if (store.load().shop) syncListings().catch((err) => console.error('[etsy] auto-sync failed:', err.message));
