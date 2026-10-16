@@ -1,4 +1,5 @@
 const gemini = require('./gemini');
+const log = require('./log');
 const { buildPrompt, buildDescriptionPrompt, cleanTitle, cleanTags, decodeEntities, looksUntranslated } = require('./listingText');
 
 /**
@@ -156,9 +157,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Returns { translations, engine }. Throws StopError when every combination is used up,
  * or a normal Error if every usable combination failed on this listing's content.
  */
+const secs = (ms) => `${Math.ceil(ms / 1000)}s`;
+const OUTCOME = {
+  quota: (err) => (err.long ? 'daily limit reached, this model/key rests 24h' : 'per-minute limit reached, resting'),
+  key: () => 'API key not usable, skipped from now on',
+  model: () => 'model not available, skipped from now on',
+  busy: () => `model busy, paused ${secs(BUSY_COOLDOWN_MS)}`,
+};
+
 /** Record what an error says about a combination (limits, dead keys/models). */
 function penalize(combo, err, busyCount, triedHere) {
   lastError.set(combo.id, err.message);
+  const wasDeadKey = deadKeys.has(`${combo.provider}|${combo.key}`);
+  const wasDeadModel = deadModels.has(`${combo.provider}|${combo.model}`);
+  if ((err.kind === 'key' && !wasDeadKey) || (err.kind === 'model' && !wasDeadModel)) {
+    log.add('error', `${combo.label}: ${OUTCOME[err.kind]()} (${err.message})`);
+  }
   switch (err.kind) {
     case 'quota':
       cooldownUntil.set(combo.id, Date.now() + (err.long ? LONG_COOLDOWN_MS : Math.max(err.retryAfterMs || 0, SHORT_COOLDOWN_MS)));
@@ -210,6 +224,8 @@ async function translateListing(listing, languages, { onAttempt, worker = 0 } = 
   const busyCount = new Map(); // combo id -> busy errors on this listing
   const failures = [];
   const sourceDescription = decodeEntities(listing.description);
+  const name = `"${decodeEntities(listing.title).slice(0, 60)}"`;
+  const langList = languages.map((l) => l.code).join(', ');
 
   for (;;) {
     const now = Date.now();
@@ -229,11 +245,14 @@ async function translateListing(listing, languages, { onAttempt, worker = 0 } = 
       }
       const wait = Math.min(...usable.map((c) => coolingFor(c, now)));
       if (wait > MAX_WAIT_MS) throw new StopError('All API keys and models have reached their limits.');
+      log.add('info', `${name}: every model/key is resting or busy, waiting ${secs(wait)}`);
       await sleep(wait);
       continue;
     }
 
     onAttempt?.(combo.label);
+    const started = Date.now();
+    log.add('info', `${name} → ${combo.label} (${langList})`);
     try {
       // A model that keeps copying the English description is no longer asked for it in the
       // big request; descriptions then come from the per-language requests below.
@@ -251,6 +270,11 @@ async function translateListing(listing, languages, { onAttempt, worker = 0 } = 
         translations[code] = { title: cleanTitle(t.title), description, tags: cleanTags(t.tags) };
       }
       if (askDescription && redo.length) copiesDescription.set(combo.model, (copiesDescription.get(combo.model) || 0) + 1);
+      if (redo.length) {
+        log.add('info', askDescription
+          ? `${name}: description came back in English for ${redo.length} language(s), re-asking them in parallel`
+          : `${name}: translating ${redo.length} description(s) in parallel (${combo.model} copies long descriptions)`);
+      }
 
       // Translate the missing descriptions in parallel, spread over every key with this model.
       await Promise.all(redo.map(async ({ code, name }) => {
@@ -270,10 +294,12 @@ async function translateListing(listing, languages, { onAttempt, worker = 0 } = 
         }
         translations[code].description = text;
       }));
+      log.add('ok', `✓ ${name} translated (${langList}) by ${combo.label} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
       return { translations, engine: combo.label };
     } catch (err) {
       failures.push(`${combo.label}: ${err.message}`);
-      console.warn(`[translate] listing ${listing.listing_id} on ${combo.label}: ${err.message}`);
+      const next = OUTCOME[err.kind]?.(err) || 'trying the next model';
+      if (err.kind !== 'key' && err.kind !== 'model') log.add('warn', `${name} on ${combo.label}: ${err.message} → ${next}`);
       penalize(combo, err, busyCount, triedHere);
     }
   }

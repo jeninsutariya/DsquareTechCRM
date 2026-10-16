@@ -59,6 +59,12 @@ to `GEMINI_API_KEY_5`.
 
 The review screen shows which model and key translated each listing.
 
+**Log.** While translating or publishing, a live log shows every step: which listing went to
+which model and key, how long it took, limits and switches, description retries, errors, and a summary
+with the speed per minute. The progress line also shows elapsed time, listings per minute and time
+left. The **Translation log** button shows the full history (tick "only problems" for warnings and
+errors) and can download it. The log is also saved to `data/translate-log.txt`.
+
 - **Model busy (503 "high demand"):** retried once on the same model, then that model pauses for 30
   seconds while others are tried. If every model is busy, the app waits rather than failing the listing.
 - **Description returned in English:** the same model is asked again for just the description, one
@@ -110,6 +116,8 @@ macOS is TextEdit saving the file as `.env.txt` or `.env.rtf`. Create it from th
 | PUT  | `/api/etsy/drafts/:id/:lang` | Edit a draft (`title`, `description`, `tags`, `include`) |
 | DELETE | `/api/etsy/drafts` | Discard all drafts |
 | POST | `/api/etsy/drafts/publish` | Publish saved drafts one at a time (optional `listingIds`) |
+| GET  | `/api/logs?since=` | Activity log entries after a sequence number |
+| GET  | `/api/logs/download` | Download the full log file |
 | GET  | `/api/jobs/:id` | Job progress, results and per-item errors |
 
 Data is stored in `data/etsy.json` (git-ignored, file mode 600).

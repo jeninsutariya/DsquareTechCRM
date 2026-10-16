@@ -9,7 +9,7 @@ const MAX_JOBS = 20;
  * outcome is recorded; one failure does not stop the batch. A worker error with
  * `stopJob` set stops the batch: that item and the rest go to `job.notProcessed`.
  */
-function startJob(type, items, worker, { concurrency = 3 } = {}) {
+function startJob(type, items, worker, { concurrency = 3, onDone } = {}) {
   const job = {
     id: crypto.randomUUID(),
     type,
@@ -48,6 +48,7 @@ function startJob(type, items, worker, { concurrency = 3 } = {}) {
     job.current = null;
     job.status = 'done';
     job.finishedAt = new Date().toISOString();
+    onDone?.(job);
   });
   return job;
 }

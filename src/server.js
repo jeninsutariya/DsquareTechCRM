@@ -7,6 +7,7 @@ const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
 const translator = require('./translator');
+const log = require('./log');
 const { cleanTitle, cleanTags, decodeEntities, looksUntranslated } = require('./listingText');
 const { startJob, getJob } = require('./jobs');
 
@@ -214,6 +215,20 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
 
 // ---- Listing translation (Gemini model/key chain -> Etsy) ----
 
+/** One summary line when a translate/publish run ends. */
+function logSummary(what, job, unit) {
+  const mins = (new Date(job.finishedAt) - new Date(job.startedAt)) / 60000;
+  const ok = job.results.length;
+  const rate = mins > 0 ? ` · ${(ok / mins).toFixed(1)} per minute` : '';
+  const parts = [`${ok} ${unit} done`, job.errors.length && `${job.errors.length} failed`, job.notProcessed.length && `${job.notProcessed.length} not processed`];
+  log.add(job.stopped ? 'error' : job.errors.length ? 'warn' : 'ok',
+    `${what} ${job.stopped ? `stopped (${job.stopped})` : 'finished'}: ${parts.filter(Boolean).join(', ')} in ${mins < 1 ? `${Math.round(mins * 60)}s` : `${mins.toFixed(1)} min`}${rate}`);
+  for (const e of job.errors.slice(0, 50)) {
+    const label = e.item.title ? `"${decodeEntities(e.item.title).slice(0, 60)}"` : `listing ${e.item.listing_id} (${e.item.language})`;
+    log.add('error', `✗ ${label}: ${e.error}`);
+  }
+}
+
 /** Listings translated at the same time: TRANSLATE_CONCURRENCY, default keys × per-key requests (5–20). */
 const translateConcurrency = () =>
   Number(process.env.TRANSLATE_CONCURRENCY) || Math.min(20, Math.max(5, translator.parallelCapacity()));
@@ -252,6 +267,8 @@ app.post('/api/etsy/translations/generate', (req, res) => {
   const listings = (store.load().listings || []).filter((l) => wanted.has(l.listing_id));
   if (!listings.length) return res.status(400).json({ error: 'Select at least one listing' });
 
+  const concurrency = translateConcurrency();
+  log.add('info', `Translate started: ${listings.length} listing(s) into ${langs.join(', ')} · ${translator.keyCount()} API key(s) · ${concurrency} at a time`);
   const job = startJob('generate', listings, async (listing, job, worker) => {
     const id = listing.listing_id;
     const own = langs.filter((c) => c !== baseLang(listing.language));
@@ -259,7 +276,10 @@ app.post('/api/etsy/translations/generate', (req, res) => {
     const drafted = store.drafts.load()[id] || {};
     const published = store.load().translations?.[id] || {};
     const todo = retranslate ? own : own.filter((c) => !(drafted[c] && !drafted[c].untranslated) && !published[c]);
-    if (!todo.length) return { listing_id: id, engine: 'already done', languages: [] };
+    if (!todo.length) {
+      log.add('info', `"${decodeEntities(listing.title).slice(0, 60)}": already translated or drafted, skipped`);
+      return { listing_id: id, engine: 'already done', languages: [] };
+    }
 
     const targets = todo.map((code) => ({ code, name: etsy.TRANSLATION_LANGUAGES[code] }));
     const { translations, engine } = await translator.translateListing(listing, targets, {
@@ -275,7 +295,7 @@ app.post('/api/etsy/translations/generate', (req, res) => {
     }
     store.drafts.save(all);
     return { listing_id: id, engine, languages: Object.keys(translations) };
-  }, { concurrency: translateConcurrency() }); // parallel across API keys (see translator.js)
+  }, { concurrency, onDone: (j) => logSummary('Translate', j, 'listing(s)') }); // parallel across API keys (see translator.js)
   res.json({ jobId: job.id });
 });
 
@@ -369,8 +389,10 @@ function startPublish(filter = () => true) {
       if (err.status === 429) {
         throw Object.assign(new Error('Etsy API limit reached. Publish again later; the remaining drafts are saved.'), { stopJob: true });
       }
+      log.add('error', `Publish failed for listing ${item.listing_id} (${item.language}): ${err.message}`);
       throw err;
     }
+    log.add('ok', `✓ Published "${decodeEntities(byId.get(item.listing_id)?.title || '').slice(0, 60)}" (${item.language})`);
     const published = store.load().translations || {};
     published[item.listing_id] = {
       ...published[item.listing_id],
@@ -384,7 +406,11 @@ function startPublish(filter = () => true) {
       store.drafts.save(all);
     }
     return item;
-  }, { concurrency: Number(process.env.PUBLISH_CONCURRENCY) || 3 }); // Etsy allows ~10 requests/second
+  }, {
+    concurrency: Number(process.env.PUBLISH_CONCURRENCY) || 3, // Etsy allows ~10 requests/second
+    onDone: (j) => logSummary('Publish', j, 'translation(s)'),
+  });
+  log.add('info', `Publish started: ${items.length} translation(s)`);
   return { jobId: job.id, skippedUntranslated };
 }
 
@@ -408,6 +434,17 @@ app.post('/api/etsy/translations/publish', (req, res) => {
   store.drafts.save(all);
   const result = startPublish((i) => keys.has(`${i.listing_id}:${i.language}`));
   res.status(result.error ? 400 : 200).json(result);
+});
+
+/** Activity log: entries after ?since=<seq> (newest 500), for the live view and the log dialog. */
+app.get('/api/logs', (req, res) => {
+  res.json({ entries: log.since(Number(req.query.since) || 0, Number(req.query.limit) || 500), last: log.lastSeq() });
+});
+
+app.get('/api/logs/download', (req, res) => {
+  res.download(log.FILE, 'translate-log.txt', (err) => {
+    if (err && !res.headersSent) res.status(404).send('No log yet');
+  });
 });
 
 app.get('/api/jobs/:id', (req, res) => {

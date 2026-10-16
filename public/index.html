@@ -68,6 +68,15 @@
     .engine { margin-left:auto; font-size:11px; font-weight:500; color:var(--muted); }
     .preview-lang.untranslated { background:#fff5f5; }
     .preview-lang.untranslated .f-desc { border-color:var(--err); }
+    .log-head { display:flex; align-items:center; gap:12px; margin:14px 0 6px; }
+    .log { height:220px; overflow:auto; background:#16161a; color:#d8d8d2; border-radius:8px; padding:8px 10px;
+      font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .log.tall { height:min(60vh, 520px); }
+    .log .lt { color:#7d7d78; }
+    .log .l-ok { color:#7fd49b; }
+    .log .l-warn { color:#f0c46c; }
+    .log .l-error { color:#ff8a80; }
+    .log.problems-only .l-info, .log.problems-only .l-ok { display:none; }
     table.keys { margin-top:12px; font-size:13px; }
     table.keys td, table.keys th { padding:5px 8px; }
     table.keys td:last-child { max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -132,6 +141,7 @@
         <div class="spacer"></div>
         <span id="count" class="muted"></span>
         <button id="drafts-btn" hidden></button>
+        <button id="log-btn">Translation log</button>
         <a class="btn" href="/api/etsy/listings/export.csv">Export CSV</a>
       </div>
       <div class="table-wrap">
@@ -328,6 +338,51 @@
           <td class="muted">${k.state === 'resting' ? `back in ${fmtSecs(k.restSecs)} · ` : ''}${esc(k.reason || (k.readyModels.length ? k.readyModels.join(', ') : ''))}</td>
         </tr>`).join('') + '</tbody></table>';
     }
+    // ---------- Activity log ----------
+
+    function logLine(e) {
+      const t = new Date(e.time).toLocaleTimeString();
+      return `<div class="l-${e.level}"><span class="lt">${esc(t)}</span> ${esc(e.message)}</div>`;
+    }
+    function appendLog(box, entries) {
+      if (!entries.length) return;
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+      box.insertAdjacentHTML('beforeend', entries.map(logLine).join(''));
+      while (box.children.length > 800) box.firstChild.remove();
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+    function speedText(job) {
+      const secs = (Date.now() - new Date(job.startedAt)) / 1000;
+      if (secs < 2 || !job.done) return `Elapsed ${fmtSecs(Math.round(secs))}`;
+      const perMin = (job.done / secs) * 60;
+      const left = job.status === 'done' ? 0 : Math.round(((job.total - job.done) / perMin) * 60);
+      return `Elapsed ${fmtSecs(Math.round(secs))} · ${perMin.toFixed(1)} per minute` + (left ? ` · about ${fmtSecs(left)} left` : '');
+    }
+
+    let logTimer = null;
+    $('log-btn').onclick = async () => {
+      $('dlg-title').textContent = 'Translation log';
+      body(`<div class="log-head"><label class="hint"><input type="checkbox" id="log-problems"> only problems</label>
+          <div class="spacer"></div><a class="btn" href="/api/logs/download">Download full log</a></div>
+        <div id="all-log" class="log tall"></div>`);
+      foot(`<div class="spacer"></div><button id="log-close" class="primary">Close</button>`);
+      const box = $('all-log');
+      $('log-problems').onchange = () => box.classList.toggle('problems-only', $('log-problems').checked);
+      let since = 0;
+      const refresh = async () => {
+        const logs = await api('/api/logs?since=' + since + '&limit=1000');
+        since = logs.last;
+        appendLog(box, logs.entries);
+        if (!box.children.length) box.innerHTML = '<div class="muted">No activity yet.</div>';
+      };
+      await refresh();
+      box.scrollTop = box.scrollHeight;
+      clearInterval(logTimer);
+      logTimer = setInterval(() => (dlg.open ? refresh() : clearInterval(logTimer)), 2000);
+      $('log-close').onclick = () => { clearInterval(logTimer); dlg.close(); };
+      if (!dlg.open) dlg.showModal();
+    };
+
     function fmtSecs(s) { return s >= 3600 ? `${Math.round(s / 3600)} h` : s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`; }
 
     // Which model/API key combinations are ready, from /api/etsy/status.
@@ -344,14 +399,23 @@
 
     async function runJob(startUrl, payload, label) {
       busy = true;
-      body(`<p>${esc(label)}</p><div class="progress"><div id="bar"></div></div><div id="prog" class="muted">Starting…</div><div id="keys"></div>`);
+      body(`<p>${esc(label)}</p><div class="progress"><div id="bar"></div></div>
+        <div id="prog" class="muted">Starting…</div><div id="speed" class="hint"></div><div id="keys"></div>
+        <div class="log-head"><b>Live log</b><label class="hint"><input type="checkbox" id="log-problems"> only problems</label></div>
+        <div id="live-log" class="log"></div>`);
       foot('');
+      let since = (await api('/api/logs?limit=1')).last;
+      const liveLog = $('live-log');
+      $('log-problems').onchange = () => liveLog.classList.toggle('problems-only', $('log-problems').checked);
       try {
         const { jobId } = await api(startUrl, payload);
         for (;;) {
-          const job = await api('/api/jobs/' + jobId);
+          const [job, logs] = await Promise.all([api('/api/jobs/' + jobId), api('/api/logs?since=' + since)]);
+          since = logs.last;
+          appendLog(liveLog, logs.entries);
           $('bar').style.width = `${(job.done / job.total) * 100}%`;
           $('prog').textContent = `${job.done} of ${job.total} done${job.errors.length ? ` · ${job.errors.length} failed` : ''}`;
+          $('speed').textContent = speedText(job);
           if (job.keys) $('keys').innerHTML = keyTable(job.keys, job.perKey || {});
           if (job.status === 'done') return job;
           await new Promise((r) => setTimeout(r, 1000));
