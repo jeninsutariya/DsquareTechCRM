@@ -153,15 +153,37 @@ app.post('/api/etsy/listings/sync', async (req, res) => {
   }
 });
 
+const SORTS = {
+  updated: (a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''),
+  title: (a, b) => decodeEntities(a.title).localeCompare(decodeEntities(b.title)),
+  price_asc: (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity),
+  price_desc: (a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity),
+  views: (a, b) => (b.views || 0) - (a.views || 0),
+  favorites: (a, b) => (b.num_favorers || 0) - (a.num_favorers || 0),
+};
+
+/**
+ * Filters: state, q (title/SKU/tag text), translated
+ * ("none" | "any" | "has:<lang>" | "missing:<lang>"), sort (key of SORTS).
+ */
 app.get('/api/etsy/listings', (req, res) => {
-  const { state, q } = req.query;
+  const { state, q, translated, sort } = req.query;
   const data = store.load();
   let rows = (data.listings || []).map((l) => toRow(l, data.translations));
   if (state) rows = rows.filter((r) => r.state === state);
   if (q) {
     const needle = String(q).toLowerCase();
-    rows = rows.filter((r) => r.title?.toLowerCase().includes(needle) || r.sku.toLowerCase().includes(needle));
+    rows = rows.filter((r) =>
+      [decodeEntities(r.title), r.sku, decodeEntities(r.tags)].some((f) => f?.toLowerCase().includes(needle)));
   }
+  if (translated === 'none') rows = rows.filter((r) => r.translations.length === 0);
+  else if (translated === 'any') rows = rows.filter((r) => r.translations.length > 0);
+  else if (translated) {
+    const [mode, lang] = String(translated).split(':');
+    if (mode === 'has') rows = rows.filter((r) => r.translations.includes(lang));
+    if (mode === 'missing') rows = rows.filter((r) => !r.translations.includes(lang));
+  }
+  if (SORTS[sort]) rows.sort(SORTS[sort]);
   res.json({ total: rows.length, listings: rows });
 });
 

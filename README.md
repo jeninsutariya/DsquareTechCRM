@@ -18,7 +18,8 @@ Rate limits (429) and 5xx errors are retried with backoff.
 
 ### Translate listings with ChatGPT (OpenAI)
 
-1. Tick the listings you want (or the header box to select everything shown).
+1. Tick the listings you want, or the header box to select everything shown.
+   Tip: set the filter to **Missing German** (or another language), then tick the header box to select every listing that still needs that translation.
 2. Click **Translate & update selected** and choose languages
    (German, Spanish, French, Italian, Japanese, Dutch, Polish, Portuguese, Russian, Swedish).
 3. ChatGPT translates the **title, description and tags** of each listing, written for local Etsy search.
@@ -62,7 +63,7 @@ macOS is TextEdit saving the file as `.env.txt` or `.env.rtf`. Create it from th
 | POST | `/auth/etsy/disconnect` | Forget the shop, its tokens and cached listings |
 | GET  | `/api/etsy/status` | Connection status, last sync time, counts per state |
 | POST | `/api/etsy/listings/sync` | Re-fetch all listings from Etsy now |
-| GET  | `/api/etsy/listings?state=&q=` | Cached listings (filter by state or by title/SKU text) |
+| GET  | `/api/etsy/listings?state=&q=&translated=&sort=` | Cached listings. `q` matches title, SKU or tag; `translated` is `none`, `any`, `has:<lang>` or `missing:<lang>`; `sort` is `updated`, `title`, `price_asc`, `price_desc`, `views` or `favorites` |
 | GET  | `/api/etsy/listings/raw` | Full raw Etsy listing objects |
 | GET  | `/api/etsy/listings/export.csv` | CSV export |
 | POST | `/api/etsy/translations/generate` | `{listingIds, languages}` → ChatGPT drafts (background job) |

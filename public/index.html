@@ -99,12 +99,27 @@
         <button class="primary" id="translate-btn">Translate &amp; update selected</button>
       </div>
       <div class="row" style="margin-bottom:12px">
-        <input id="search" placeholder="Search title or SKU" />
-        <select id="state-filter">
+        <input id="search" placeholder="Search title, SKU or tag" />
+        <select id="state-filter" aria-label="State">
           <option value="">All states</option>
           <option>active</option><option>draft</option><option>inactive</option>
           <option>sold_out</option><option>expired</option>
         </select>
+        <select id="translated-filter" aria-label="Translation">
+          <option value="">All translations</option>
+          <option value="none">Not translated</option>
+          <option value="any">Translated (any language)</option>
+        </select>
+        <select id="sort" aria-label="Sort">
+          <option value="">Sort: Etsy order</option>
+          <option value="updated">Recently updated</option>
+          <option value="title">Title A–Z</option>
+          <option value="price_asc">Price: low to high</option>
+          <option value="price_desc">Price: high to low</option>
+          <option value="views">Most views</option>
+          <option value="favorites">Most favorites</option>
+        </select>
+        <button id="clear-filters" hidden>Clear filters</button>
         <div class="spacer"></div>
         <span id="count" class="muted"></span>
         <a class="btn" href="/api/etsy/listings/export.csv">Export CSV</a>
@@ -161,6 +176,7 @@
         $('stats').innerHTML = '';
         return;
       }
+      fillLanguageFilter(s.translationLanguages);
       const synced = s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : 'never';
       $('shop-info').innerHTML = `<a href="${esc(s.shop.url)}" target="_blank" rel="noopener">${esc(s.shop.shop_name)}</a> · last sync ${esc(synced)}`;
       if (s.lastSyncError) flash('Last sync failed: ' + s.lastSyncError, 'err');
@@ -169,10 +185,23 @@
       await loadListings();
     }
 
+    function fillLanguageFilter(langs) {
+      const sel = $('translated-filter');
+      if (sel.dataset.filled) return;
+      sel.dataset.filled = '1';
+      const entries = Object.entries(langs || {});
+      sel.insertAdjacentHTML('beforeend',
+        `<optgroup label="Missing language">${entries.map(([c, n]) => `<option value="missing:${c}">Missing ${esc(n)}</option>`).join('')}</optgroup>` +
+        `<optgroup label="Has language">${entries.map(([c, n]) => `<option value="has:${c}">Has ${esc(n)}</option>`).join('')}</optgroup>`);
+    }
+
     async function loadListings() {
       const params = new URLSearchParams();
       if ($('search').value) params.set('q', $('search').value);
       if ($('state-filter').value) params.set('state', $('state-filter').value);
+      if ($('translated-filter').value) params.set('translated', $('translated-filter').value);
+      if ($('sort').value) params.set('sort', $('sort').value);
+      $('clear-filters').hidden = !($('search').value || $('state-filter').value || $('translated-filter').value || $('sort').value);
       const { total, listings } = await api('/api/etsy/listings?' + params);
       shown = listings;
       $('count').textContent = `${total} listing${total === 1 ? '' : 's'}`;
@@ -396,7 +425,11 @@
 
     let t;
     $('search').oninput = () => { clearTimeout(t); t = setTimeout(loadListings, 200); };
-    $('state-filter').onchange = loadListings;
+    $('state-filter').onchange = $('translated-filter').onchange = $('sort').onchange = loadListings;
+    $('clear-filters').onclick = () => {
+      $('search').value = $('state-filter').value = $('translated-filter').value = $('sort').value = '';
+      loadListings();
+    };
 
     const qs = new URLSearchParams(location.search);
     if (qs.get('error')) flash(qs.get('error'), 'err');

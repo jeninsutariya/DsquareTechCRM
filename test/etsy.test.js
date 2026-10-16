@@ -166,6 +166,19 @@ test('translate selected listings with ChatGPT, then publish to Etsy', async (t)
   const rows = await (await realFetch(`${base}/api/etsy/listings?q=active 0`)).json();
   assert.deepEqual(rows.listings.find((l) => l.listing_id === 0).translations, ['de']);
 
+  // Filters: translation status, sort, and search.
+  const list = async (qs) => (await (await realFetch(`${base}/api/etsy/listings?${qs}`)).json()).listings;
+  assert.deepEqual((await list('translated=has:de')).map((l) => l.listing_id), [0]);
+  assert.deepEqual((await list('translated=any')).map((l) => l.listing_id), [0]);
+  assert.equal((await list('translated=none')).length, 251);
+  assert.equal((await list('translated=missing:de')).length, 251);
+  assert.equal((await list('translated=missing:sv')).length, 252);
+  assert.equal((await list('state=draft&translated=missing:de')).length, 2);
+  assert.equal((await list('q=sku12')).length, 11); // SKU12 and SKU120-129
+  const byTitle = (await list('sort=title')).map((l) => l.title);
+  assert.equal(byTitle[0], 'FAILME');
+  assert.match((await list("q=tom's mug"))[0].title, /^Tom&#39;s/); // search matches decoded entities
+
   // Unknown listings / languages are rejected.
   r = await post(base, '/api/etsy/translations/publish', { items: [{ listing_id: 999999, language: 'de', title: 'x', description: 'y', tags: [] }] });
   assert.equal(r.status, 400);
