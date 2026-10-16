@@ -115,7 +115,7 @@ async function generate(prompt, schema, attempt = 0) {
   if (!res.ok) {
     let msg = data.error?.message || res.statusText;
     if (res.status === 404) msg += ` (model "${model}" not found; set GEMINI_MODEL in .env)`;
-    if (res.status === 400 && /API key/i.test(msg)) msg = 'Gemini API key is invalid. Check GEMINI_API_KEY in .env.';
+    if (res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(msg)) msg = 'Gemini API key is invalid. Check GEMINI_API_KEY in .env.';
     throw new Error(`Gemini ${res.status}: ${msg}`);
   }
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('');

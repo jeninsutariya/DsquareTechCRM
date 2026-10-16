@@ -7,6 +7,7 @@ const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
 const gemini = require('./gemini');
+const cloudTranslate = require('./cloudTranslate');
 const { startJob, getJob } = require('./jobs');
 
 const app = express();
@@ -129,7 +130,7 @@ app.get('/api/etsy/status', (req, res) => {
   const { shop, connectedAt, lastSyncAt, lastSyncError, counts, listings, scopes } = store.load();
   res.json({
     setupProblem: etsySetupProblem(),
-    geminiProblem: gemini.geminiSetupProblem(),
+    translateProblem: translateSetupProblem(),
     // Shops connected before write access was added must reconnect once.
     canWrite: Boolean(scopes?.includes('listings_w')),
     translationLanguages: etsy.TRANSLATION_LANGUAGES,
@@ -185,9 +186,34 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
 
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 
-/** Step 1: ask Gemini for translations of the selected listings. Nothing is changed on Etsy yet. */
+function translateSetupProblem() {
+  if (!gemini.geminiSetupProblem() || !cloudTranslate.cloudSetupProblem()) return null;
+  return 'No translation key in .env. Add GEMINI_API_KEY and/or GOOGLE_TRANSLATE_API_KEY, then restart the app.';
+}
+
+/** Gemini first; on any Gemini failure, fall back to Google Cloud Translation. */
+async function translateWithFallback(listing, targets) {
+  const geminiProblem = gemini.geminiSetupProblem();
+  let geminiError = null;
+  if (!geminiProblem) {
+    try {
+      return { engine: 'gemini', translations: await gemini.translateListing(listing, targets) };
+    } catch (err) {
+      geminiError = err.message;
+      console.warn(`[translate] Gemini failed for listing ${listing.listing_id}, using Google Cloud Translation: ${err.message}`);
+    }
+  }
+  if (cloudTranslate.cloudSetupProblem()) throw new Error(geminiError || geminiProblem);
+  try {
+    return { engine: 'google-cloud', geminiError, translations: await cloudTranslate.translateListing(listing, targets) };
+  } catch (err) {
+    throw new Error(geminiError ? `Gemini: ${geminiError} | ${err.message}` : err.message);
+  }
+}
+
+/** Step 1: ask Gemini (or Google Cloud Translation as fallback) for translations of the selected listings. Nothing is changed on Etsy yet. */
 app.post('/api/etsy/translations/generate', (req, res) => {
-  const problem = gemini.geminiSetupProblem();
+  const problem = translateSetupProblem();
   if (problem) return res.status(400).json({ error: problem });
 
   const { listingIds = [], languages = [] } = req.body || {};
@@ -203,11 +229,10 @@ app.post('/api/etsy/translations/generate', (req, res) => {
       .filter((c) => c !== baseLang(listing.language))
       .map((code) => ({ code, name: etsy.TRANSLATION_LANGUAGES[code] }));
     if (!targets.length) throw new Error('Listing is already in the selected language');
-    const translations = await gemini.translateListing(listing, targets);
     return {
       listing_id: listing.listing_id,
       source: { title: gemini.decodeEntities(listing.title), language: listing.language },
-      translations,
+      ...(await translateWithFallback(listing, targets)),
     };
   });
   res.json({ jobId: job.id });

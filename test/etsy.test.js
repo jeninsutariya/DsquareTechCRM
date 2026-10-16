@@ -21,6 +21,13 @@ global.fetch = async (input, init = {}) => {
   calls.push({ url, init });
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+  if (url.hostname === 'translation.googleapis.com') {
+    assert.equal(init.headers['x-goog-api-key'], 'gem-key'); // falls back to the Gemini key
+    const req = JSON.parse(init.body);
+    assert.equal(req.source, undefined); // auto-detect
+    if (req.q.some((q) => q.includes('CLOUDFAIL'))) return json({ error: { message: 'API not enabled' } }, 403);
+    return json({ data: { translations: req.q.map((q) => ({ translatedText: `{${req.target}} ${q}` })) } });
+  }
   if (url.hostname === 'generativelanguage.googleapis.com') {
     assert.equal(url.pathname, '/v1beta/models/test-model:generateContent');
     assert.equal(init.headers['x-goog-api-key'], 'gem-key');
@@ -63,7 +70,7 @@ global.fetch = async (input, init = {}) => {
     const total = state === 'active' ? 250 : state === 'draft' ? 2 : 0;
     const results = [];
     for (let i = offset; i < Math.min(offset + limit, total); i++) {
-      results.push({ listing_id: (state === 'draft' ? 10000 : 0) + i, language: 'en-US', title: i === 1 ? 'FAILME' : `Tom&#39;s mug &amp; cup ${state} ${i}`, description: 'Great mug &amp; cup', state, quantity: 1, price: { amount: 1999, divisor: 100, currency_code: 'USD' }, skus: [`SKU${i}`], tags: [] });
+      results.push({ listing_id: (state === 'draft' ? 10000 : 0) + i, language: 'en-US', title: i === 1 ? 'FAILME' : i === 2 ? 'FAILME CLOUDFAIL' : `Tom&#39;s mug &amp; cup ${state} ${i}`, description: 'Great mug &amp; cup', state, quantity: 1, price: { amount: 1999, divisor: 100, currency_code: 'USD' }, skus: [`SKU${i}`], tags: [] });
     }
     return json({ count: total, results });
   }
@@ -128,13 +135,20 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   assert.equal(status.canWrite, true);
   assert.equal(status.geminiProblem, null);
 
-  // Listing 1 makes Gemini fail; it must not stop the others.
+  // Listing 0: Gemini works. Listing 1: Gemini fails -> Google Cloud Translation.
+  // Listing 2: both fail; that must not stop the others.
   let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2], languages: ['de', 'sv', 'en', 'xx'] });
   const gen = await waitJob(base, (await r.json()).jobId);
   assert.equal(gen.results.length, 2);
   assert.equal(gen.errors.length, 1);
-  assert.match(gen.errors[0].error, /Gemini 400: boom/);
+  assert.match(gen.errors[0].error, /Gemini 400: boom.*Google Cloud Translation 403: API not enabled/);
   const draft = gen.results.find((d) => d.listing_id === 0);
+  assert.equal(draft.engine, 'gemini');
+  const fallback = gen.results.find((d) => d.listing_id === 1);
+  assert.equal(fallback.engine, 'google-cloud');
+  assert.match(fallback.geminiError, /boom/);
+  assert.equal(fallback.translations.sv.title, '{sv} FAILME');
+  assert.equal(fallback.translations.de.description, '{de} Great mug & cup');
   assert.deepEqual(Object.keys(draft.translations).sort(), ['de', 'sv']); // 'en' and unknown codes are ignored
   const tags = draft.translations.de.tags;
   assert.equal(tags.length, 13);

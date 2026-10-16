@@ -26,6 +26,13 @@ Rate limits (429) and 5xx errors are retried with backoff.
 5. Click **Publish to Etsy**. Each translation is saved to the listing on Etsy.
    The **Translations** column shows which languages each listing has.
 
+**Fallback:** if Gemini fails for a listing (bad key, quota, unknown model, blocked or invalid output),
+that listing is translated with **Google Cloud Translation**, which auto-detects the source language.
+The review screen marks those listings and shows the Gemini error. With no Gemini key at all,
+Cloud Translation is used for everything. Cloud Translation uses `GOOGLE_TRANSLATE_API_KEY`, or your
+Gemini key if that's empty. The **Cloud Translation API** must be enabled on that key's Google Cloud
+project, with billing on.
+
 Output is cleaned to Etsy's rules: title at most 140 characters, at most 13 tags of up to 20 characters each.
 Etsy only shows a translation if that language is enabled in your shop
 (Shop Manager → Settings → Info & Appearance → Languages). The dialog marks languages that aren't enabled with ⚠.
@@ -40,7 +47,7 @@ Shops connected before this feature need to click **Reconnect shop** once, which
 3. Configure and run:
 
 ```bash
-cp .env.example .env   # fill in ETSY_API_KEY, ETSY_SHARED_SECRET and GEMINI_API_KEY
+cp .env.example .env   # fill in ETSY_API_KEY, ETSY_SHARED_SECRET, GEMINI_API_KEY (+ optional GOOGLE_TRANSLATE_API_KEY)
 npm install
 npm start              # open http://localhost:3000
 ```
