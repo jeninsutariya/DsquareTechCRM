@@ -20,7 +20,7 @@ Rate limits (429) and 5xx errors are retried with backoff.
 
 1. Tick the listings you want (or the header box to select everything shown).
 2. Click **Translate & update selected** and choose languages
-   (German, Spanish, French, Italian, Japanese, Dutch, Polish, Portuguese, Russian, English).
+   (German, Spanish, French, Italian, Japanese, Dutch, Polish, Portuguese, Russian, Swedish).
 3. Gemini translates the **title, description and tags** of each listing, written for local Etsy search.
 4. Review and edit the result. Nothing changes on Etsy yet.
 5. Click **Publish to Etsy**. Each translation is saved to the listing on Etsy.

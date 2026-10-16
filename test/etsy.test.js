@@ -128,14 +128,14 @@ test('translate selected listings with Gemini, then publish to Etsy', async (t) 
   assert.equal(status.canWrite, true);
   assert.equal(status.geminiProblem, null);
 
-  // Listing 1 makes Gemini fail; it must not stop the others. 'en' is skipped as the source language.
-  let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2], languages: ['de', 'fr', 'en', 'xx'] });
+  // Listing 1 makes Gemini fail; it must not stop the others.
+  let r = await post(base, '/api/etsy/translations/generate', { listingIds: [0, 1, 2], languages: ['de', 'sv', 'en', 'xx'] });
   const gen = await waitJob(base, (await r.json()).jobId);
   assert.equal(gen.results.length, 2);
   assert.equal(gen.errors.length, 1);
   assert.match(gen.errors[0].error, /Gemini 400: boom/);
   const draft = gen.results.find((d) => d.listing_id === 0);
-  assert.deepEqual(Object.keys(draft.translations).sort(), ['de', 'fr']);
+  assert.deepEqual(Object.keys(draft.translations).sort(), ['de', 'sv']); // 'en' and unknown codes are ignored
   const tags = draft.translations.de.tags;
   assert.equal(tags.length, 13);
   assert.equal(tags[0], 'good tag');

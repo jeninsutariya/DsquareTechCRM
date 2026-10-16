@@ -8,10 +8,10 @@ const LISTING_STATES = ['active', 'inactive', 'sold_out', 'draft', 'expired'];
 // listings_w is needed to write listing translations.
 const REQUIRED_SCOPES = ['listings_r', 'listings_w', 'shops_r', 'profile_r'];
 
-/** Languages Etsy supports for listing translations. */
+/** Target languages offered for listing translations (English is the shop's source language). */
 const TRANSLATION_LANGUAGES = {
-  de: 'German', en: 'English', es: 'Spanish', fr: 'French', it: 'Italian',
-  ja: 'Japanese', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese', ru: 'Russian',
+  de: 'German', es: 'Spanish', fr: 'French', it: 'Italian', ja: 'Japanese',
+  nl: 'Dutch', pl: 'Polish', pt: 'Portuguese', ru: 'Russian', sv: 'Swedish',
 };
 const PAGE_LIMIT = 100; // Etsy's maximum page size
 
