@@ -164,7 +164,7 @@ const SORTS = {
 
 /**
  * Filters: state, q (title/SKU/tag text), translated
- * ("none" | "any" | "has:<lang>" | "missing:<lang>"), sort (key of SORTS).
+ * ("none" | "any" | "has:<lang>" | "missing:<lang>" | "has:all" | "missing:any"), sort (key of SORTS).
  */
 app.get('/api/etsy/listings', (req, res) => {
   const { state, q, translated, sort } = req.query;
@@ -180,8 +180,12 @@ app.get('/api/etsy/listings', (req, res) => {
   else if (translated === 'any') rows = rows.filter((r) => r.translations.length > 0);
   else if (translated) {
     const [mode, lang] = String(translated).split(':');
-    if (mode === 'has') rows = rows.filter((r) => r.translations.includes(lang));
-    if (mode === 'missing') rows = rows.filter((r) => !r.translations.includes(lang));
+    const all = Object.keys(etsy.TRANSLATION_LANGUAGES);
+    const has = (r, l) => r.translations.includes(l);
+    if (mode === 'has' && lang === 'all') rows = rows.filter((r) => all.every((l) => has(r, l)));
+    else if (mode === 'missing' && lang === 'any') rows = rows.filter((r) => !all.every((l) => has(r, l)));
+    else if (mode === 'has') rows = rows.filter((r) => has(r, lang));
+    else if (mode === 'missing') rows = rows.filter((r) => !has(r, lang));
   }
   if (SORTS[sort]) rows.sort(SORTS[sort]);
   res.json({ total: rows.length, listings: rows });

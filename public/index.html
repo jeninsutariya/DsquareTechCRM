@@ -107,8 +107,6 @@
         </select>
         <select id="translated-filter" aria-label="Translation">
           <option value="">All translations</option>
-          <option value="none">Not translated</option>
-          <option value="any">Translated (any language)</option>
         </select>
         <select id="sort" aria-label="Sort">
           <option value="">Sort: Etsy order</option>
@@ -191,8 +189,14 @@
       sel.dataset.filled = '1';
       const entries = Object.entries(langs || {});
       sel.insertAdjacentHTML('beforeend',
-        `<optgroup label="Missing language">${entries.map(([c, n]) => `<option value="missing:${c}">Missing ${esc(n)}</option>`).join('')}</optgroup>` +
-        `<optgroup label="Has language">${entries.map(([c, n]) => `<option value="has:${c}">Has ${esc(n)}</option>`).join('')}</optgroup>`);
+        `<optgroup label="Missing">` +
+          `<option value="none">Missing all languages</option>` +
+          `<option value="missing:any">Missing at least one language</option>` +
+          `${entries.map(([c, n]) => `<option value="missing:${c}">Missing ${esc(n)}</option>`).join('')}</optgroup>` +
+        `<optgroup label="Has">` +
+          `<option value="has:all">Has all languages</option>` +
+          `<option value="any">Has at least one language</option>` +
+          `${entries.map(([c, n]) => `<option value="has:${c}">Has ${esc(n)}</option>`).join('')}</optgroup>`);
     }
 
     async function loadListings() {

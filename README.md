@@ -63,7 +63,7 @@ macOS is TextEdit saving the file as `.env.txt` or `.env.rtf`. Create it from th
 | POST | `/auth/etsy/disconnect` | Forget the shop, its tokens and cached listings |
 | GET  | `/api/etsy/status` | Connection status, last sync time, counts per state |
 | POST | `/api/etsy/listings/sync` | Re-fetch all listings from Etsy now |
-| GET  | `/api/etsy/listings?state=&q=&translated=&sort=` | Cached listings. `q` matches title, SKU or tag; `translated` is `none`, `any`, `has:<lang>` or `missing:<lang>`; `sort` is `updated`, `title`, `price_asc`, `price_desc`, `views` or `favorites` |
+| GET  | `/api/etsy/listings?state=&q=&translated=&sort=` | Cached listings. `q` matches title, SKU or tag; `translated` is `none`, `any`, `has:all`, `missing:any`, `has:<lang>` or `missing:<lang>`; `sort` is `updated`, `title`, `price_asc`, `price_desc`, `views` or `favorites` |
 | GET  | `/api/etsy/listings/raw` | Full raw Etsy listing objects |
 | GET  | `/api/etsy/listings/export.csv` | CSV export |
 | POST | `/api/etsy/translations/generate` | `{listingIds, languages}` → ChatGPT drafts (background job) |

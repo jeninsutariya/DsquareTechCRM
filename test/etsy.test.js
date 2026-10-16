@@ -174,6 +174,8 @@ test('translate selected listings with ChatGPT, then publish to Etsy', async (t)
   assert.equal((await list('translated=missing:de')).length, 251);
   assert.equal((await list('translated=missing:sv')).length, 252);
   assert.equal((await list('state=draft&translated=missing:de')).length, 2);
+  assert.equal((await list('translated=has:all')).length, 0);
+  assert.equal((await list('translated=missing:any')).length, 252);
   assert.equal((await list('q=sku12')).length, 11); // SKU12 and SKU120-129
   const byTitle = (await list('sort=title')).map((l) => l.title);
   assert.equal(byTitle[0], 'FAILME');
