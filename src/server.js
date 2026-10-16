@@ -7,11 +7,11 @@ const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
 const translator = require('./translator');
-const { cleanTitle, cleanTags, decodeEntities } = require('./listingText');
+const { cleanTitle, cleanTags, decodeEntities, looksUntranslated } = require('./listingText');
 const { startJob, getJob } = require('./jobs');
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '100mb' }));
 const PORT = Number(process.env.PORT) || 3000;
 const SYNC_INTERVAL_MINUTES = Number(process.env.SYNC_INTERVAL_MINUTES) || 0;
 
@@ -121,6 +121,7 @@ app.get('/auth/etsy/callback', async (req, res) => {
 
 app.post('/auth/etsy/disconnect', (req, res) => {
   store.clear();
+  store.drafts.clear();
   res.json({ ok: true });
 });
 
@@ -132,6 +133,7 @@ app.get('/api/etsy/status', (req, res) => {
     setupProblem: etsySetupProblem(),
     translateProblem: translator.setupProblem(),
     translatorChain: translator.chainStatus(),
+    drafts: countDrafts(),
     // Shops connected before write access was added must reconnect once.
     canWrite: Boolean(scopes?.includes('listings_w')),
     translationLanguages: etsy.TRANSLATION_LANGUAGES,
@@ -212,13 +214,32 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
 // ---- Listing translation (Gemini model/key chain -> Etsy) ----
 
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
+const listingMap = () => new Map((store.load().listings || []).map((l) => [l.listing_id, l]));
 
-/** Step 1: get translations from the model/key chain (see translator.js) of the selected listings. Nothing is changed on Etsy yet. */
+/** Normalize one draft and flag a description that is still in the source language. */
+function makeDraft(listing, fields, extra = {}) {
+  const description = String(fields.description || '').trim();
+  return {
+    title: cleanTitle(fields.title),
+    description,
+    tags: cleanTags(fields.tags),
+    include: fields.include !== false,
+    untranslated: looksUntranslated(listing?.description || '', description),
+    ...extra,
+  };
+}
+
+/**
+ * Step 1: generate translations with the model/key chain (see translator.js) and save
+ * each listing's result as a draft right away, so nothing has to be generated twice.
+ * Languages that already have a good draft or a published translation are skipped
+ * unless `retranslate` is set. Nothing is changed on Etsy.
+ */
 app.post('/api/etsy/translations/generate', (req, res) => {
   const problem = translator.setupProblem();
   if (problem) return res.status(400).json({ error: problem });
 
-  const { listingIds = [], languages = [] } = req.body || {};
+  const { listingIds = [], languages = [], retranslate = false } = req.body || {};
   const langs = [...new Set(languages)].filter((c) => etsy.TRANSLATION_LANGUAGES[c]);
   if (!langs.length) return res.status(400).json({ error: 'Choose at least one language' });
 
@@ -227,59 +248,158 @@ app.post('/api/etsy/translations/generate', (req, res) => {
   if (!listings.length) return res.status(400).json({ error: 'Select at least one listing' });
 
   const job = startJob('generate', listings, async (listing, job) => {
-    const targets = langs
-      .filter((c) => c !== baseLang(listing.language))
-      .map((code) => ({ code, name: etsy.TRANSLATION_LANGUAGES[code] }));
-    if (!targets.length) throw new Error('Listing is already in the selected language');
-    return {
-      listing_id: listing.listing_id,
-      source: { title: decodeEntities(listing.title), language: listing.language },
-      ...(await translator.translateListing(listing, targets, { onAttempt: (label) => (job.current = label) })),
-    };
+    const id = listing.listing_id;
+    const own = langs.filter((c) => c !== baseLang(listing.language));
+    if (!own.length) throw new Error('Listing is already in the selected language');
+    const drafted = store.drafts.load()[id] || {};
+    const published = store.load().translations?.[id] || {};
+    const todo = retranslate ? own : own.filter((c) => !(drafted[c] && !drafted[c].untranslated) && !published[c]);
+    if (!todo.length) return { listing_id: id, engine: 'already done', languages: [] };
+
+    const targets = todo.map((code) => ({ code, name: etsy.TRANSLATION_LANGUAGES[code] }));
+    const { translations, engine } = await translator.translateListing(listing, targets, {
+      onAttempt: (label) => (job.current = label),
+    });
+    const all = store.drafts.load();
+    all[id] = { ...all[id] };
+    for (const [code, t] of Object.entries(translations)) {
+      all[id][code] = makeDraft(listing, t, { engine, createdAt: new Date().toISOString() });
+    }
+    store.drafts.save(all);
+    return { listing_id: id, engine, languages: Object.keys(translations) };
   }, { concurrency: 1 }); // one request at a time (see translator.js)
   res.json({ jobId: job.id });
 });
 
-/** Step 2: save the reviewed translations to Etsy. */
-app.post('/api/etsy/translations/publish', (req, res) => {
+function countDrafts() {
+  let publishable = 0;
+  let untranslated = 0;
+  for (const langs of Object.values(store.drafts.load())) {
+    for (const d of Object.values(langs)) {
+      if (d.untranslated) untranslated++;
+      else if (d.include) publishable++;
+    }
+  }
+  return { publishable, untranslated };
+}
+
+/** Saved drafts, in listing order, for the review screen. */
+app.get('/api/etsy/drafts', (req, res) => {
+  const drafts = store.drafts.load();
+  const byId = listingMap();
+  const listings = [];
+  let publishable = 0;
+  let untranslated = 0;
+  for (const [id, langs] of Object.entries(drafts)) {
+    const listing = byId.get(Number(id));
+    if (!listing) continue;
+    for (const d of Object.values(langs)) {
+      if (d.untranslated) untranslated++;
+      else if (d.include) publishable++;
+    }
+    listings.push({ listing_id: Number(id), title: decodeEntities(listing.title), langs });
+  }
+  const order = [...byId.keys()];
+  listings.sort((a, b) => order.indexOf(a.listing_id) - order.indexOf(b.listing_id));
+  res.json({ publishable, untranslated, listings });
+});
+
+/** Save an edit (or include/skip toggle) to one draft. */
+app.put('/api/etsy/drafts/:id/:lang', (req, res) => {
+  const id = Number(req.params.id);
+  const all = store.drafts.load();
+  const current = all[id]?.[req.params.lang];
+  if (!current) return res.status(404).json({ error: 'Draft not found' });
+  all[id][req.params.lang] = makeDraft(listingMap().get(id), { ...current, ...req.body }, {
+    engine: current.engine,
+    createdAt: current.createdAt,
+    edited: true,
+  });
+  store.drafts.save(all);
+  res.json(all[id][req.params.lang]);
+});
+
+app.delete('/api/etsy/drafts', (req, res) => {
+  store.drafts.clear();
+  res.json({ ok: true });
+});
+
+/**
+ * Step 2: publish saved drafts to Etsy one at a time. Each draft is removed once Etsy
+ * has it, so a stopped or failed run can simply be started again. Drafts whose
+ * description is still in the source language are never published.
+ */
+function startPublish(filter = () => true) {
   const { shop } = store.load();
-  if (!shop) return res.status(400).json({ error: 'Etsy shop is not connected' });
-
-  const known = new Set((store.load().listings || []).map((l) => l.listing_id));
-  const items = (req.body?.items || [])
-    .map((i) => ({
-      listing_id: Number(i.listing_id),
-      language: String(i.language),
-      title: cleanTitle(i.title),
-      description: String(i.description || '').trim(),
-      tags: cleanTags(i.tags),
-    }))
-    .filter((i) => known.has(i.listing_id) && etsy.TRANSLATION_LANGUAGES[i.language] && i.title && i.description);
-  if (!items.length) return res.status(400).json({ error: 'Nothing to publish' });
-
-  const job = startJob(
-    'publish',
-    items,
-    async (item) => {
-      try {
-        await client.upsertTranslation(shop.shop_id, item.listing_id, item.language, item);
-      } catch (err) {
-        if (err.status === 403) {
-          throw new Error('Etsy denied write access. Click "Reconnect shop" to grant permission to update listings.');
-        }
-        throw err;
+  if (!shop) return { error: 'Etsy shop is not connected' };
+  const byId = listingMap();
+  const items = [];
+  let skippedUntranslated = 0;
+  for (const [id, langs] of Object.entries(store.drafts.load())) {
+    for (const [language, d] of Object.entries(langs)) {
+      const item = { listing_id: Number(id), language };
+      if (!byId.has(item.listing_id) || !d.include || !filter(item)) continue;
+      if (d.untranslated) {
+        skippedUntranslated++;
+        continue;
       }
-      const all = store.load().translations || {};
-      all[item.listing_id] = {
-        ...all[item.listing_id],
-        [item.language]: { title: item.title, tags: item.tags, updatedAt: new Date().toISOString() },
-      };
-      store.update({ translations: all });
-      return { listing_id: item.listing_id, language: item.language };
-    },
-    { concurrency: 2 }, // stay well inside Etsy's rate limit
-  );
-  res.json({ jobId: job.id });
+      items.push(item);
+    }
+  }
+  if (!items.length) return { error: skippedUntranslated ? 'Every draft still has an untranslated description' : 'Nothing to publish' };
+
+  const job = startJob('publish', items, async (item) => {
+    const draft = store.drafts.load()[item.listing_id]?.[item.language];
+    if (!draft) return { ...item, skipped: true }; // removed meanwhile
+    const exists = Boolean(store.load().translations?.[item.listing_id]?.[item.language]);
+    try {
+      await client.upsertTranslation(shop.shop_id, item.listing_id, item.language, draft, { exists });
+    } catch (err) {
+      if (err.status === 403) {
+        throw Object.assign(new Error('Etsy denied write access. Click "Reconnect shop", then publish again; your drafts are saved.'), { stopJob: true });
+      }
+      if (err.status === 429) {
+        throw Object.assign(new Error('Etsy API limit reached. Publish again later; the remaining drafts are saved.'), { stopJob: true });
+      }
+      throw err;
+    }
+    const published = store.load().translations || {};
+    published[item.listing_id] = {
+      ...published[item.listing_id],
+      [item.language]: { title: draft.title, tags: draft.tags, updatedAt: new Date().toISOString() },
+    };
+    store.update({ translations: published });
+    const all = store.drafts.load();
+    if (all[item.listing_id]) {
+      delete all[item.listing_id][item.language];
+      if (!Object.keys(all[item.listing_id]).length) delete all[item.listing_id];
+      store.drafts.save(all);
+    }
+    return item;
+  }, { concurrency: 1 });
+  return { jobId: job.id, skippedUntranslated };
+}
+
+app.post('/api/etsy/drafts/publish', (req, res) => {
+  const ids = req.body?.listingIds ? new Set(req.body.listingIds.map(Number)) : null;
+  const result = startPublish((i) => !ids || ids.has(i.listing_id));
+  res.status(result.error ? 400 : 200).json(result);
+});
+
+/** Older pages send the reviewed translations themselves: save them as drafts, then publish those. */
+app.post('/api/etsy/translations/publish', (req, res) => {
+  const byId = listingMap();
+  const all = store.drafts.load();
+  const keys = new Set();
+  for (const i of req.body?.items || []) {
+    const id = Number(i.listing_id);
+    if (!byId.has(id) || !etsy.TRANSLATION_LANGUAGES[i.language]) continue;
+    all[id] = { ...all[id], [i.language]: makeDraft(byId.get(id), i, { createdAt: new Date().toISOString() }) };
+    keys.add(`${id}:${i.language}`);
+  }
+  store.drafts.save(all);
+  const result = startPublish((i) => keys.has(`${i.listing_id}:${i.language}`));
+  res.status(result.error ? 400 : 200).json(result);
 });
 
 app.get('/api/jobs/:id', (req, res) => {

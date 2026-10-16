@@ -23,8 +23,15 @@ Rate limits (429) and 5xx errors are retried with backoff.
 2. Click **Translate & update selected** and choose languages
    (German, Spanish, French, Italian, Japanese, Dutch, Polish, Portuguese, Russian, Swedish).
 3. AI translates the **title, description and tags** of each listing, written for local Etsy search.
-4. Review and edit the result. Nothing changes on Etsy yet.
-5. Click **Publish to Etsy**. Each translation is saved to the listing on Etsy.
+4. Each translated listing is **saved as a draft on the server right away**. Reloading the page, closing
+   the dialog or restarting the app keeps it, so nothing has to be generated twice. Generating again
+   skips languages that already have a good draft or are published (tick "Translate again" to redo them).
+   Review and edit drafts any time with **Saved drafts**; edits save automatically. Nothing changes on Etsy yet.
+   A description that comes back still in English is rejected and retried on the next model, and is
+   never published.
+5. Click **Publish all to Etsy**. Drafts are published one at a time with progress, and each is removed
+   once Etsy has it. If Etsy's API limit is hit, publishing stops and the rest stay saved; click
+   **Publish remaining** later.
    The **Translations** column shows which languages each listing has.
 
 **Model and API key rotation.** Translations run one request at a time, with a
@@ -81,6 +88,10 @@ macOS is TextEdit saving the file as `.env.txt` or `.env.rtf`. Create it from th
 | GET  | `/api/etsy/listings/export.csv` | CSV export |
 | POST | `/api/etsy/translations/generate` | `{listingIds, languages}` → AI drafts via model/key rotation (background job) |
 | POST | `/api/etsy/translations/publish` | `{items:[{listing_id, language, title, description, tags}]}` → save to Etsy (background job) |
+| GET  | `/api/etsy/drafts` | Saved drafts waiting to be published |
+| PUT  | `/api/etsy/drafts/:id/:lang` | Edit a draft (`title`, `description`, `tags`, `include`) |
+| DELETE | `/api/etsy/drafts` | Discard all drafts |
+| POST | `/api/etsy/drafts/publish` | Publish saved drafts one at a time (optional `listingIds`) |
 | GET  | `/api/jobs/:id` | Job progress, results and per-item errors |
 
 Data is stored in `data/etsy.json` (git-ignored, file mode 600).

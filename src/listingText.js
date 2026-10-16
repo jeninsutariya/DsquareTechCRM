@@ -54,7 +54,7 @@ Translate this Etsy listing into: ${targets}.
 Rules:
 - Write naturally for shoppers in each language, using words they actually search for on Etsy. Do not translate word-for-word.
 - Title: at most ${MAX_TITLE} characters. Put the most important keywords first.
-- Description: translate the full text. Keep paragraphs, line breaks, bullet points, emojis, measurements, sizes, numbers and URLs exactly as they are.
+- Description: translate the FULL description into the target language. Never return it in the original language. Keep paragraphs, line breaks, bullet points, emojis, measurements, sizes, numbers and URLs exactly as they are.
 - Tags: exactly ${MAX_TAGS} search tags if possible, each at most ${MAX_TAG_LENGTH} characters, only letters, numbers, spaces, hyphens and apostrophes. Localize them as shoppers would search, not literal translations.
 - Do not translate brand names, the shop name, or product codes/SKUs.
 - Return only the JSON object.
@@ -70,4 +70,15 @@ TAGS:
 ${listing.tags.join(', ')}`;
 }
 
-module.exports = { buildPrompt, cleanTitle, cleanTags, decodeEntities };
+/**
+ * True when a "translated" description is really the source text copied back
+ * (ignoring case, spacing and URLs). Short descriptions are not checked.
+ */
+function looksUntranslated(sourceDescription, translatedDescription) {
+  const norm = (s) => decodeEntities(s).replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const src = norm(sourceDescription);
+  if ((src.match(/\p{L}/gu) || []).length < 30) return false;
+  return src === norm(translatedDescription);
+}
+
+module.exports = { buildPrompt, cleanTitle, cleanTags, decodeEntities, looksUntranslated };

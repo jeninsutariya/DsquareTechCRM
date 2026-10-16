@@ -1,5 +1,5 @@
 const gemini = require('./gemini');
-const { buildPrompt, cleanTitle, cleanTags, decodeEntities } = require('./listingText');
+const { buildPrompt, cleanTitle, cleanTags, decodeEntities, looksUntranslated } = require('./listingText');
 
 /**
  * Translation runs through a chain of (API key × model) combinations:
@@ -128,6 +128,9 @@ async function translateListing(listing, languages, { onAttempt } = {}) {
       for (const { code } of languages) {
         const t = raw?.[code];
         if (!t?.title || !t?.description) throw new gemini.ProviderError(`skipped language "${code}"`, 'content');
+        if (looksUntranslated(listing.description, t.description)) {
+          throw new gemini.ProviderError(`description was not translated into "${code}"`, 'content');
+        }
         translations[code] = { title: cleanTitle(t.title), description: String(t.description).trim(), tags: cleanTags(t.tags) };
       }
       return { translations, engine: combo.label };

@@ -88,7 +88,9 @@ test('switches model, then API key, on limits; retries the same listing; stops w
     [2, 'm-a · key 2'], // k1/m-a daily limit, m-b missing, k1/m-c bad output -> key 2
     [3, 'm-c · key 2'], // k2/m-a daily limit -> next model
   ]);
-  assert.equal(job.results[2].translations.de.title, 'de via k2/m-a');
+  const drafts = await (await realFetch(`${base}/api/etsy/drafts`)).json();
+  assert.deepEqual(drafts.listings.map((d) => d.listing_id), [0, 1, 2, 3], 'finished listings are saved as drafts');
+  assert.equal(drafts.listings[2].langs.de.title, 'de via k2/m-a');
   assert.deepEqual(job.errors, [], 'no listing fails just because a limit was reached');
   assert.match(job.stopped, /reached their limits/);
   assert.deepEqual(job.notProcessed.map((l) => l.listing_id), [4, 5]);
@@ -110,6 +112,7 @@ test('switches model, then API key, on limits; retries the same listing; stops w
 test('stops right away when every API key is invalid', async (t) => {
   translator.resetLimits();
   mode = 'badkeys';
+  require('../src/store').drafts.clear();
   calls.length = 0;
   const server = app.listen(0);
   t.after(() => server.close());

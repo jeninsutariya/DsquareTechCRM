@@ -65,7 +65,9 @@
     .preview-lang textarea { min-height:90px; resize:vertical; }
     .hint { font-size:12px; color:var(--muted); }
     .hint.bad { color:var(--err); }
-    .engine { float:right; font-size:11px; font-weight:500; color:var(--muted); }
+    .engine { margin-left:auto; font-size:11px; font-weight:500; color:var(--muted); }
+    .preview-lang.untranslated { background:#fff5f5; }
+    .preview-lang.untranslated .f-desc { border-color:var(--err); }
     ul.errors { margin:8px 0 0; padding-left:18px; color:var(--err); }
   </style>
 </head>
@@ -121,6 +123,7 @@
         <button id="clear-filters" hidden>Clear filters</button>
         <div class="spacer"></div>
         <span id="count" class="muted"></span>
+        <button id="drafts-btn" hidden></button>
         <a class="btn" href="/api/etsy/listings/export.csv">Export CSV</a>
       </div>
       <div class="table-wrap">
@@ -176,6 +179,9 @@
         return;
       }
       fillLanguageFilter(s.translationLanguages);
+      const nDrafts = (s.drafts?.publishable || 0) + (s.drafts?.untranslated || 0);
+      $('drafts-btn').hidden = !nDrafts;
+      $('drafts-btn').textContent = `Saved drafts (${nDrafts})`;
       const synced = s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : 'never';
       $('shop-info').innerHTML = `<a href="${esc(s.shop.url)}" target="_blank" rel="noopener">${esc(s.shop.shop_name)}</a> · last sync ${esc(synced)}`;
       if (s.lastSyncError) flash('Last sync failed: ' + s.lastSyncError, 'err');
@@ -254,12 +260,15 @@
     const dlg = $('dlg');
     const body = (html) => { $('dlg-body').innerHTML = html; };
     const foot = (html) => { $('dlg-foot').innerHTML = html; };
-    let drafts = [];
-    let lastGen = null; // last generate job: errors, stopped reason, notProcessed  // [{ listing_id, source, translations: {code: {title, description, tags}} }]
+    let lastGen = null; // last generate job: errors, stopped reason, notProcessed
+    let reviewPage = 0;
+    const PAGE_SIZE = 20;
 
-    $('dlg-close').onclick = () => {
+    $('dlg-close').onclick = async () => {
       if (busy && !confirm('A job is still running in the background. Close anyway?')) return;
+      await flushEdits();
       dlg.close();
+      loadStatus();
     };
     dlg.addEventListener('cancel', (e) => { if (busy) e.preventDefault(); });
 
@@ -270,23 +279,33 @@
       dlg.showModal();
     };
 
+    $('drafts-btn').onclick = () => {
+      lastGen = null;
+      reviewPage = 0;
+      dlg.showModal();
+      showReview();
+    };
+
     function showLanguageStep() {
       $('dlg-title').textContent = `Translate ${selected.size} listing${selected.size === 1 ? '' : 's'}`;
       const shopLangs = (status.shop.languages || []).map((c) => c.split('-')[0]);
       const remembered = JSON.parse(localStorageGet('langs') || '[]');
       body(`
         <p style="margin-top:0">Choose the languages. AI will translate the <b>title, description and tags</b>.
-        You can review and edit everything before anything changes on Etsy.</p>
+        Each result is saved as a draft right away, so you never have to generate it twice. Nothing changes on Etsy until you publish.</p>
         ${chainSummary()}
         <div class="langs">${Object.entries(status.translationLanguages).map(([code, name]) => `
           <label><input type="checkbox" value="${code}" ${remembered.includes(code) ? 'checked' : ''}>
           ${esc(name)} <span class="muted">${code}</span>
           ${shopLangs.length && !shopLangs.includes(code) ? '<span class="hint" title="Not enabled in your Etsy shop language settings">⚠</span>' : ''}</label>`).join('')}
         </div>
+        <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="retranslate">
+          Translate again even if a language already has a saved draft or is published</label>
         <p class="hint">Languages marked ⚠ are not enabled in your Etsy shop settings (Shop Manager → Settings → Info &amp; Appearance → Languages); Etsy may reject them.
         A listing is skipped for its own language.</p>`);
-      foot(`<div class="spacer"></div><button id="gen-btn" class="primary">Generate translations</button>`);
+      foot(`${status.drafts?.publishable ? '<button id="to-drafts">Saved drafts</button>' : ''}<div class="spacer"></div><button id="gen-btn" class="primary">Generate translations</button>`);
       $('gen-btn').onclick = generate;
+      if ($('to-drafts')) $('to-drafts').onclick = () => { reviewPage = 0; showReview(); };
     }
 
     // Which model/API key combinations are ready, from /api/etsy/status.
@@ -324,12 +343,18 @@
       const languages = [...$('dlg-body').querySelectorAll('.langs input:checked')].map((i) => i.value);
       if (!languages.length) return alert('Choose at least one language');
       localStorageSet('langs', JSON.stringify(languages));
+      const retranslate = $('retranslate').checked;
       try {
-        const job = await runJob('/api/etsy/translations/generate', { listingIds: [...selected], languages },
+        const job = await runJob('/api/etsy/translations/generate', { listingIds: [...selected], languages, retranslate },
           `Translating ${selected.size} listing(s) into ${languages.length} language(s)…`);
         lastGen = job;
-        drafts = job.results;
-        showPreview();
+        // Listings never reached (limits ran out) stay selected for a later run.
+        if (job.notProcessed.length) {
+          selected.clear();
+          job.notProcessed.forEach((l) => selected.add(l.listing_id));
+        }
+        reviewPage = 0;
+        await showReview();
         loadStatus();
       } catch (e) {
         body(`<div class="msg err">${esc(e.message)}</div>`);
@@ -340,51 +365,83 @@
 
     function errorList(errors, describe) {
       if (!errors.length) return '';
-      return `<div class="msg err"><b>${errors.length} failed</b><ul class="errors">${errors.map((e) => `<li>${esc(describe(e.item))}: ${esc(e.error)}</li>`).join('')}</ul></div>`;
+      const shownErrors = errors.slice(0, 15);
+      return `<div class="msg err"><b>${errors.length} failed</b><ul class="errors">${shownErrors.map((e) => `<li>${esc(describe(e.item))}: ${esc(e.error)}</li>`).join('')}` +
+        (errors.length > shownErrors.length ? `<li>…and ${errors.length - shownErrors.length} more</li>` : '') + `</ul></div>`;
     }
 
-    function stoppedNotice() {
-      if (!lastGen?.stopped) return '';
-      const n = lastGen.notProcessed.length;
-      return `<div class="msg warn"><b>Stopped:</b> ${esc(lastGen.stopped)} ${lastGen.results.length} of ${lastGen.total} listing(s) translated;
-        ${n} not processed yet. Publish the ones below now; the ${n} remaining stay selected so you can translate them later.</div>`;
+    function stoppedNotice(job, what) {
+      if (!job?.stopped) return '';
+      return `<div class="msg warn"><b>Stopped:</b> ${esc(job.stopped)} ${job.done} of ${job.total} ${what} done; ${job.notProcessed.length} not processed yet.</div>`;
     }
 
-    function showPreview() {
-      const errors = lastGen?.errors || [];
-      const titleOf = (id) => decode(shown.find((l) => l.listing_id === id)?.title || drafts.find((d) => d.listing_id === id)?.source.title || `#${id}`);
+    // ---------- Review saved drafts ----------
+
+    async function showReview() {
+      await flushEdits();
+      const data = await api('/api/etsy/drafts');
+      const pages = Math.max(1, Math.ceil(data.listings.length / PAGE_SIZE));
+      reviewPage = Math.min(reviewPage, pages - 1);
+      const pageItems = data.listings.slice(reviewPage * PAGE_SIZE, (reviewPage + 1) * PAGE_SIZE);
       $('dlg-title').textContent = 'Review translations';
-      body(stoppedNotice() + errorList(errors, (l) => decode(l.title)) +
-        (drafts.length ? '<p style="margin-top:0" class="muted">Edit anything you like. Untick a language to skip it. Nothing is saved to Etsy until you click Publish.</p>' : '') +
-        drafts.map((d) => `
+      const notes = stoppedNotice(lastGen, 'listing(s)') +
+        (lastGen?.stopped ? `<div class="msg warn">The listings not processed stay selected, so you can translate them later. Everything already translated is saved below.</div>` : '') +
+        errorList(lastGen?.errors || [], (l) => decode(l.title)) +
+        (data.untranslated ? `<div class="msg err">${data.untranslated} draft(s) still have an <b>English description</b> and will not be published.
+          Edit the description, or generate those languages again to retry on another model.</div>` : '');
+      body(notes + (data.listings.length
+        ? `<p style="margin-top:0" class="muted">${data.listings.length} listing(s) with saved drafts. Edits are saved automatically. Untick a language to skip it.</p>` +
+          pageItems.map((d) => `
           <div class="preview-listing">
-            <h3>${esc(titleOf(d.listing_id))} <span class="engine">${esc(d.engine || '')}</span></h3>
-            ${Object.entries(d.translations).map(([code, t]) => `
-              <div class="preview-lang" data-id="${d.listing_id}" data-lang="${code}">
-                <label class="lang-head"><input type="checkbox" class="include" checked> <span class="lang">${code}</span> ${esc(status.translationLanguages[code])}</label>
+            <h3>${esc(d.title)}</h3>
+            ${Object.entries(d.langs).map(([code, t]) => `
+              <div class="preview-lang ${t.include ? '' : 'skip'} ${t.untranslated ? 'untranslated' : ''}" data-id="${d.listing_id}" data-lang="${code}">
+                <label class="lang-head"><input type="checkbox" class="include" ${t.include ? 'checked' : ''}> <span class="lang">${code}</span> ${esc(status.translationLanguages[code] || code)}
+                  <span class="engine">${esc(t.engine || '')}</span></label>
                 <input type="text" class="f-title" value="${esc(t.title)}" maxlength="140" aria-label="Title">
                 <span class="hint t-count"></span>
                 <textarea class="f-desc" aria-label="Description">${esc(t.description)}</textarea>
+                <span class="hint bad d-warn">${t.untranslated ? 'Description is still in English, so it will not be published. Translate it here or generate again.' : ''}</span>
                 <input type="text" class="f-tags" value="${esc(t.tags.join(', '))}" aria-label="Tags">
                 <span class="hint g-count"></span>
               </div>`).join('')}
-          </div>`).join(''));
+          </div>`).join('')
+        : '<p class="muted">No saved drafts. Select listings and click "Translate &amp; update selected".</p>'));
+      $('dlg-body').scrollTop = 0;
       $('dlg-body').querySelectorAll('.preview-lang').forEach(validateBlock);
-      $('dlg-body').oninput = (e) => { const b = e.target.closest('.preview-lang'); if (b) validateBlock(b); };
-      $('dlg-body').onchange = (e) => { if (e.target.matches('.include')) { e.target.closest('.preview-lang').classList.toggle('skip', !e.target.checked); countPublish(); } };
-      foot(`<button id="back-btn">Back</button><div class="spacer"></div><span id="pub-count" class="muted"></span>
-            <button id="pub-btn" class="primary">Publish to Etsy</button>`);
-      $('back-btn').onclick = showLanguageStep;
+      $('dlg-body').oninput = (e) => {
+        const b = e.target.closest('.preview-lang');
+        if (b) { validateBlock(b); queueEdit(b); }
+      };
+      $('dlg-body').onchange = (e) => {
+        const b = e.target.closest('.preview-lang');
+        if (!b) return;
+        if (e.target.matches('.include')) b.classList.toggle('skip', !e.target.checked);
+        queueEdit(b, 0);
+      };
+      foot(`<button id="back-btn">Translate more</button>
+            ${pages > 1 ? `<button id="prev-page" ${reviewPage === 0 ? 'disabled' : ''}>‹</button><span class="muted">Page ${reviewPage + 1} / ${pages}</span><button id="next-page" ${reviewPage >= pages - 1 ? 'disabled' : ''}>›</button>` : ''}
+            <div class="spacer"></div>
+            ${data.listings.length ? '<button id="discard-btn">Discard all drafts</button>' : ''}
+            <span class="muted">${data.publishable} ready</span>
+            <button id="pub-btn" class="primary" ${data.publishable ? '' : 'disabled'}>Publish all to Etsy</button>`);
+      $('back-btn').onclick = async () => { await flushEdits(); showLanguageStep(); };
+      if ($('prev-page')) $('prev-page').onclick = () => { reviewPage--; showReview(); };
+      if ($('next-page')) $('next-page').onclick = () => { reviewPage++; showReview(); };
+      if ($('discard-btn')) $('discard-btn').onclick = async () => {
+        if (!confirm('Delete all saved drafts? They will have to be generated again.')) return;
+        await fetch('/api/etsy/drafts', { method: 'DELETE' });
+        loadStatus();
+        showReview();
+      };
       $('pub-btn').onclick = publish;
-      countPublish();
     }
 
     function tagsOf(block) { return block.querySelector('.f-tags').value.split(',').map((t) => t.trim()).filter(Boolean); }
 
     function validateBlock(b) {
       const title = b.querySelector('.f-title').value;
-      const tc = b.querySelector('.t-count');
-      tc.textContent = `Title ${title.length}/140`;
+      b.querySelector('.t-count').textContent = `Title ${title.length}/140`;
       const tags = tagsOf(b);
       const long = tags.filter((t) => t.length > 20);
       const gc = b.querySelector('.g-count');
@@ -392,44 +449,58 @@
       gc.classList.toggle('bad', long.length > 0 || tags.length > 13);
     }
 
-    function selectedItems() {
-      return [...$('dlg-body').querySelectorAll('.preview-lang')].filter((b) => b.querySelector('.include').checked).map((b) => ({
-        listing_id: Number(b.dataset.id),
-        language: b.dataset.lang,
-        title: b.querySelector('.f-title').value,
-        description: b.querySelector('.f-desc').value,
-        tags: tagsOf(b),
-      }));
+    // Edits are saved to the server shortly after typing stops.
+    const pendingEdits = new Map(); // block -> timer
+    function queueEdit(block, delay = 600) {
+      clearTimeout(pendingEdits.get(block));
+      pendingEdits.set(block, setTimeout(() => saveEdit(block), delay));
     }
-
-    function countPublish() {
-      const n = selectedItems().length;
-      $('pub-count').textContent = `${n} translation${n === 1 ? '' : 's'}`;
-      $('pub-btn').disabled = n === 0;
+    async function saveEdit(block) {
+      pendingEdits.delete(block);
+      const saved = await fetch(`/api/etsy/drafts/${block.dataset.id}/${block.dataset.lang}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: block.querySelector('.f-title').value,
+          description: block.querySelector('.f-desc').value,
+          tags: tagsOf(block),
+          include: block.querySelector('.include').checked,
+        }),
+      }).then((r) => r.json()).catch(() => null);
+      if (saved) {
+        block.classList.toggle('untranslated', saved.untranslated);
+        block.querySelector('.d-warn').textContent = saved.untranslated ? 'Description is still in English, so it will not be published. Translate it here or generate again.' : '';
+      }
+    }
+    async function flushEdits() {
+      const blocks = [...pendingEdits.keys()];
+      blocks.forEach((b) => clearTimeout(pendingEdits.get(b)));
+      await Promise.all(blocks.map(saveEdit));
     }
 
     async function publish() {
-      const items = selectedItems();
-      const listings = new Set(items.map((i) => i.listing_id)).size;
-      if (!confirm(`Update ${items.length} translation(s) on ${listings} live Etsy listing(s)?`)) return;
+      await flushEdits();
+      const n = (await api('/api/etsy/drafts')).publishable;
+      if (!confirm(`Publish ${n} translation(s) to your live Etsy listings, one at a time?`)) return;
       try {
-        const job = await runJob('/api/etsy/translations/publish', { items }, `Updating ${items.length} translation(s) on Etsy…`);
+        const job = await runJob('/api/etsy/drafts/publish', {}, `Publishing ${n} translation(s) to Etsy, one at a time…`);
+        const left = (await api('/api/etsy/drafts')).publishable;
         const ok = job.results.length;
-        $('dlg-title').textContent = 'Done';
-        body((ok ? `<div class="msg ok">Updated ${ok} translation${ok === 1 ? '' : 's'} on Etsy.</div>` : '') +
-          errorList(job.errors, (i) => `${decode(shown.find((l) => l.listing_id === i.listing_id)?.title || '#' + i.listing_id)} (${i.language})`));
-        foot(`<div class="spacer"></div><button id="done-btn" class="primary">Close</button>`);
-        $('done-btn').onclick = () => dlg.close();
-        // Keep listings that were never translated (limits ran out) selected for a later run.
-        if (lastGen?.notProcessed?.length) {
-          selected.clear();
-          lastGen.notProcessed.forEach((l) => selected.add(l.listing_id));
-        } else if (!job.errors.length) selected.clear();
+        $('dlg-title').textContent = 'Publish finished';
+        body((ok ? `<div class="msg ok">Published ${ok} translation${ok === 1 ? '' : 's'} to Etsy.</div>` : '') +
+          stoppedNotice(job, 'translation(s)') +
+          errorList(job.errors, (i) => `${decode(shown.find((l) => l.listing_id === i.listing_id)?.title || '#' + i.listing_id)} (${i.language})`) +
+          (left ? `<p>${left} draft(s) are still saved. Publish again to continue where it stopped.</p>` : ''));
+        foot(`<button id="review-btn">Review drafts</button><div class="spacer"></div>
+              ${left ? '<button id="again-btn" class="primary">Publish remaining</button>' : ''}<button id="done-btn" ${left ? '' : 'class="primary"'}>Close</button>`);
+        $('review-btn').onclick = () => { lastGen = null; reviewPage = 0; showReview(); };
+        if ($('again-btn')) $('again-btn').onclick = publish;
+        $('done-btn').onclick = () => { dlg.close(); loadStatus(); };
         loadListings();
       } catch (e) {
         body(`<div class="msg err">${esc(e.message)}</div>`);
         foot(`<div class="spacer"></div><button id="back-btn">Back to review</button>`);
-        $('back-btn').onclick = () => showPreview();
+        $('back-btn').onclick = () => showReview();
       }
     }
 

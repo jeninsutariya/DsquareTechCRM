@@ -178,15 +178,19 @@ function createClient({ getTokens, saveTokens }) {
     return { listings: [...byId.values()], counts };
   }
 
-  /** Create or replace a listing's translation in one language. */
-  async function upsertTranslation(shopId, listingId, language, { title, description, tags }) {
+  /**
+   * Create or replace a listing's translation in one language. `exists` says which
+   * call to try first, so a new translation costs one request (Etsy has a daily cap).
+   */
+  async function upsertTranslation(shopId, listingId, language, { title, description, tags }, { exists = false } = {}) {
     const path = `/shops/${shopId}/listings/${listingId}/translations/${language}`;
     const form = { title, description, tags: (tags || []).join(',') };
+    const [first, second, retryOn] = exists ? ['PUT', 'POST', [404]] : ['POST', 'PUT', [400, 409]];
     try {
-      return await request(path, { method: 'PUT', form });
+      return await request(path, { method: first, form });
     } catch (err) {
-      if (err.status !== 404) throw err;
-      return request(path, { method: 'POST', form }); // no translation yet
+      if (!retryOn.includes(err.status)) throw err;
+      return request(path, { method: second, form });
     }
   }
 
