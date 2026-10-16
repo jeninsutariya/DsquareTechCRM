@@ -133,6 +133,7 @@ app.get('/api/etsy/status', (req, res) => {
     setupProblem: etsySetupProblem(),
     translateProblem: translator.setupProblem(),
     translatorChain: translator.chainStatus(),
+    translatorKeys: translator.keyStatus(),
     drafts: countDrafts(),
     // Shops connected before write access was added must reconnect once.
     canWrite: Boolean(scopes?.includes('listings_w')),
@@ -213,8 +214,8 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
 
 // ---- Listing translation (Gemini model/key chain -> Etsy) ----
 
-/** Listings translated at the same time: TRANSLATE_CONCURRENCY, default one per API key. */
-const translateConcurrency = () => Number(process.env.TRANSLATE_CONCURRENCY) || Math.max(1, translator.keyCount());
+/** Listings translated at the same time: TRANSLATE_CONCURRENCY, default one per API key (at least 5). */
+const translateConcurrency = () => Number(process.env.TRANSLATE_CONCURRENCY) || Math.max(5, translator.keyCount());
 
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 const listingMap = () => new Map((store.load().listings || []).map((l) => [l.listing_id, l]));
@@ -264,6 +265,8 @@ app.post('/api/etsy/translations/generate', (req, res) => {
       worker,
       onAttempt: (label) => (job.current = label),
     });
+    const keyName = engine.split(' · ')[1];
+    job.perKey = { ...job.perKey, [keyName]: (job.perKey?.[keyName] || 0) + 1 };
     const all = store.drafts.load();
     all[id] = { ...all[id] };
     for (const [code, t] of Object.entries(translations)) {
@@ -409,7 +412,7 @@ app.post('/api/etsy/translations/publish', (req, res) => {
 app.get('/api/jobs/:id', (req, res) => {
   const job = getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found (the app may have restarted)' });
-  res.json(job);
+  res.json(job.type === 'generate' ? { ...job, keys: translator.keyStatus() } : job);
 });
 
 app.use(express.static(path.join(__dirname, '..', 'public')));

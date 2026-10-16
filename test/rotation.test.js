@@ -103,6 +103,12 @@ test('switches model, then API key, on limits; retries the same listing; stops w
   assert.equal(drafts.listings[2].langs.de.title, 'de via k2/m-a');
   assert.deepEqual(job.errors, [], 'no listing fails just because a limit was reached');
   assert.match(job.stopped, /reached their limits/);
+  // Per-key panel: key 2 is resting because of its daily limit; key 1 still has m-c (bad output only).
+  const [key1, key2] = job.keys;
+  assert.deepEqual([key1.key, key1.state, key1.readyModels], ['key 1', 'ready', ['m-c']]);
+  assert.deepEqual([key2.key, key2.state], ['key 2', 'resting']);
+  assert.match(key2.reason, /limit reached/);
+  assert.ok(key2.restSecs > 3600);
   assert.deepEqual(job.notProcessed.map((l) => l.listing_id), [4, 5]);
   assert.equal(job.done, 4);
 

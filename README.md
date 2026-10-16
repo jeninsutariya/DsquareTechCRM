@@ -34,10 +34,13 @@ Rate limits (429) and 5xx errors are retried with backoff.
    **Publish remaining** later.
    The **Translations** column shows which languages each listing has.
 
-**Speed.** Listings are translated **in parallel, one per API key** (each key sends one request
+**Speed.** Listings are translated **in parallel, one per API key, at least 5** (each key sends one request
 at a time, so its own limits are respected). With 4 working keys that is about 4× faster. Set
 `TRANSLATE_CONCURRENCY` to override, or `TRANSLATE_DELAY_MS` to add a pause between requests on a key.
 Publishing sends `PUBLISH_CONCURRENCY` (default 3) translations to Etsy at a time.
+Each new request goes to the key with the least work in progress, so all keys share the load. While
+translating, a table shows every key's status (working / ready / resting with time left / not usable)
+with the reason, and how many listings each key finished.
 
 **Model and API key rotation.** The app works through a chain:
 API key 1 with every model in `GEMINI_MODELS` (default: 3.5 Flash Lite → 3.1 Flash Lite →

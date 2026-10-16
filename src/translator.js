@@ -48,7 +48,7 @@ function buildChain() {
   const chain = [];
   geminiKeys().forEach((key, i) => {
     for (const model of models.length ? models : DEFAULT_GEMINI_MODELS) {
-      chain.push({ id: `gemini|${i + 1}|${model}`, provider: 'gemini', model, key, label: `${model} · key ${i + 1}` });
+      chain.push({ id: `gemini|${i + 1}|${model}`, provider: 'gemini', model, key, keyNo: i + 1, label: `${model} · key ${i + 1}` });
     }
   });
   return chain;
@@ -58,6 +58,8 @@ function buildChain() {
 const cooldownUntil = new Map(); // combo id -> timestamp
 const deadKeys = new Set(); // "provider|key": key rejected
 const deadModels = new Set(); // "provider|model": model doesn't exist / unusable
+const lastError = new Map(); // combo id -> last error message
+const inFlight = new Map(); // key -> requests waiting or running on it
 
 const isDead = (c) => deadKeys.has(`${c.provider}|${c.key}`) || deadModels.has(`${c.provider}|${c.model}`);
 const coolingFor = (c, now) => Math.max(0, (cooldownUntil.get(c.id) || 0) - now);
@@ -81,9 +83,37 @@ function chainStatus() {
 const keyQueues = new Map(); // key -> promise chain
 const delayMs = () => Number(process.env.TRANSLATE_DELAY_MS ?? 0);
 function onKey(key, fn) {
+  inFlight.set(key, (inFlight.get(key) || 0) + 1);
   const run = (keyQueues.get(key) || Promise.resolve()).then(fn);
   keyQueues.set(key, run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, delayMs()))));
-  return run;
+  return run.finally(() => inFlight.set(key, inFlight.get(key) - 1));
+}
+
+/** Per-key overview: what each API key is doing and why it may be idle. */
+function keyStatus() {
+  const now = Date.now();
+  const byKey = new Map();
+  for (const c of buildChain()) {
+    if (!byKey.has(c.keyNo)) byKey.set(c.keyNo, { key: `key ${c.keyNo}`, combos: [], busy: inFlight.get(c.key) || 0 });
+    byKey.get(c.keyNo).combos.push(c);
+  }
+  return [...byKey.values()].map(({ key, combos, busy }) => {
+    const alive = combos.filter((c) => !isDead(c));
+    const ready = alive.filter((c) => !coolingFor(c, now));
+    const reasons = combos.map((c) => lastError.get(c.id)).filter(Boolean);
+    let state = 'ready';
+    if (!alive.length) state = 'unavailable';
+    else if (busy) state = 'working';
+    else if (!ready.length) state = 'resting';
+    const restSecs = ready.length ? 0 : Math.ceil(Math.min(...alive.map((c) => coolingFor(c, now)), Infinity) / 1000);
+    return {
+      key,
+      state,
+      readyModels: ready.map((c) => c.model),
+      restSecs: Number.isFinite(restSecs) ? restSecs : 0,
+      reason: state === 'ready' || state === 'working' ? null : reasons[reasons.length - 1] || null,
+    };
+  });
 }
 
 /** Number of API keys, used as the default number of listings translated in parallel. */
@@ -124,7 +154,11 @@ async function translateListing(listing, languages, { onAttempt, worker = 0 } = 
   for (;;) {
     const now = Date.now();
     const usable = chainFrom(worker).filter((c) => !isDead(c) && !triedHere.has(c.id));
-    const combo = usable.find((c) => !coolingFor(c, now));
+    // Spread the work: take the key with the fewest requests in progress (ties keep chain order,
+    // so each key's models are still tried in GEMINI_MODELS order).
+    const available = usable.filter((c) => !coolingFor(c, now));
+    const least = Math.min(...available.map((c) => inFlight.get(c.key) || 0));
+    const combo = available.find((c) => (inFlight.get(c.key) || 0) === least);
 
     if (!combo) {
       if (!usable.length) {
@@ -159,6 +193,7 @@ async function translateListing(listing, languages, { onAttempt, worker = 0 } = 
       return { translations, engine: combo.label };
     } catch (err) {
       failures.push(`${combo.label}: ${err.message}`);
+      lastError.set(combo.id, err.message);
       console.warn(`[translate] listing ${listing.listing_id} on ${combo.label}: ${err.message}`);
       switch (err.kind) {
         case 'quota':
@@ -191,6 +226,7 @@ function resetLimits() {
   cooldownUntil.clear();
   deadKeys.clear();
   deadModels.clear();
+  lastError.clear();
 }
 
-module.exports = { translateListing, setupProblem, chainStatus, resetLimits, keyCount, StopError, DEFAULT_GEMINI_MODELS };
+module.exports = { translateListing, setupProblem, chainStatus, keyStatus, resetLimits, keyCount, StopError, DEFAULT_GEMINI_MODELS };

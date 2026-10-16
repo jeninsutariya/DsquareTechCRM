@@ -68,6 +68,14 @@
     .engine { margin-left:auto; font-size:11px; font-weight:500; color:var(--muted); }
     .preview-lang.untranslated { background:#fff5f5; }
     .preview-lang.untranslated .f-desc { border-color:var(--err); }
+    table.keys { margin-top:12px; font-size:13px; }
+    table.keys td, table.keys th { padding:5px 8px; }
+    table.keys td:last-child { max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .kstate { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; background:#eee; }
+    .k-working .kstate { background:#e3f4ea; color:var(--ok); }
+    .k-ready .kstate { background:#eef3ff; color:#2b4a9b; }
+    .k-resting .kstate { background:#fff6e0; color:#7a5300; }
+    .k-unavailable .kstate { background:#fbeaea; color:var(--err); }
     ul.errors { margin:8px 0 0; padding-left:18px; color:var(--err); }
   </style>
 </head>
@@ -294,6 +302,7 @@
         <p style="margin-top:0">Choose the languages. AI will translate the <b>title, description and tags</b>.
         Each result is saved as a draft right away, so you never have to generate it twice. Nothing changes on Etsy until you publish.</p>
         ${chainSummary()}
+        ${status.translatorKeys?.length ? keyTable(status.translatorKeys) : ''}
         <div class="langs">${Object.entries(status.translationLanguages).map(([code, name]) => `
           <label><input type="checkbox" value="${code}" ${remembered.includes(code) ? 'checked' : ''}>
           ${esc(name)} <span class="muted">${code}</span>
@@ -307,6 +316,19 @@
       $('gen-btn').onclick = generate;
       if ($('to-drafts')) $('to-drafts').onclick = () => { reviewPage = 0; showReview(); };
     }
+
+    // What each API key is doing: working / ready / resting (limit) / unavailable, and why.
+    function keyTable(keys, perKey = null) {
+      const label = { working: 'working', ready: 'ready', resting: 'resting', unavailable: 'not usable' };
+      return `<table class="keys"><thead><tr><th>API key</th><th>Status</th>${perKey ? '<th>Done</th>' : ''}<th>Details</th></tr></thead><tbody>` +
+        keys.map((k) => `<tr class="k-${k.state}">
+          <td>${esc(k.key)}</td>
+          <td><span class="kstate">${label[k.state]}</span></td>
+          ${perKey ? `<td>${perKey[k.key] || 0}</td>` : ''}
+          <td class="muted">${k.state === 'resting' ? `back in ${fmtSecs(k.restSecs)} · ` : ''}${esc(k.reason || (k.readyModels.length ? k.readyModels.join(', ') : ''))}</td>
+        </tr>`).join('') + '</tbody></table>';
+    }
+    function fmtSecs(s) { return s >= 3600 ? `${Math.round(s / 3600)} h` : s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`; }
 
     // Which model/API key combinations are ready, from /api/etsy/status.
     function chainSummary() {
@@ -322,15 +344,15 @@
 
     async function runJob(startUrl, payload, label) {
       busy = true;
-      body(`<p>${esc(label)}</p><div class="progress"><div id="bar"></div></div><div id="prog" class="muted">Starting…</div>`);
+      body(`<p>${esc(label)}</p><div class="progress"><div id="bar"></div></div><div id="prog" class="muted">Starting…</div><div id="keys"></div>`);
       foot('');
       try {
         const { jobId } = await api(startUrl, payload);
         for (;;) {
           const job = await api('/api/jobs/' + jobId);
           $('bar').style.width = `${(job.done / job.total) * 100}%`;
-          $('prog').textContent = `${job.done} of ${job.total} done${job.errors.length ? ` · ${job.errors.length} failed` : ''}` +
-            (job.current ? ` · using ${job.current}` : '');
+          $('prog').textContent = `${job.done} of ${job.total} done${job.errors.length ? ` · ${job.errors.length} failed` : ''}`;
+          if (job.keys) $('keys').innerHTML = keyTable(job.keys, job.perKey || {});
           if (job.status === 'done') return job;
           await new Promise((r) => setTimeout(r, 1000));
         }
