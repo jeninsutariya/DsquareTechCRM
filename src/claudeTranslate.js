@@ -1,7 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { z } = require('zod');
 const { zodOutputFormat } = require('@anthropic-ai/sdk/helpers/zod');
-const { buildPrompt, cleanTitle, cleanTags, decodeEntities } = require('./gemini');
+const { buildPrompt, cleanTitle, cleanTags, decodeEntities } = require('./listingText');
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 
@@ -22,7 +22,7 @@ function getClient() {
 
 /**
  * Translate one Etsy listing into several languages with Claude.
- * Same contract as gemini.translateListing: { [code]: { title, description, tags } }.
+ * Returns { [code]: { title, description, tags } }.
  */
 async function translateListing(listing, languages) {
   const entry = z.object({ title: z.string(), description: z.string(), tags: z.array(z.string()) });

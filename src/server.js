@@ -6,8 +6,8 @@ loadEnv();
 const express = require('express');
 const etsy = require('./etsy');
 const store = require('./store');
-const gemini = require('./gemini');
 const claude = require('./claudeTranslate');
+const { cleanTitle, cleanTags, decodeEntities } = require('./listingText');
 const { startJob, getJob } = require('./jobs');
 
 const app = express();
@@ -130,7 +130,7 @@ app.get('/api/etsy/status', (req, res) => {
   const { shop, connectedAt, lastSyncAt, lastSyncError, counts, listings, scopes } = store.load();
   res.json({
     setupProblem: etsySetupProblem(),
-    translateProblem: translateSetupProblem(),
+    translateProblem: claude.claudeSetupProblem(),
     // Shops connected before write access was added must reconnect once.
     canWrite: Boolean(scopes?.includes('listings_w')),
     translationLanguages: etsy.TRANSLATION_LANGUAGES,
@@ -182,38 +182,13 @@ app.get('/api/etsy/listings/export.csv', (req, res) => {
   res.send(csv);
 });
 
-// ---- Listing translation (Gemini -> Etsy) ----
+// ---- Listing translation (Claude -> Etsy) ----
 
 const baseLang = (code) => String(code || '').toLowerCase().split(/[-_]/)[0];
 
-function translateSetupProblem() {
-  if (!gemini.geminiSetupProblem() || !claude.claudeSetupProblem()) return null;
-  return 'No translation key in .env. Add GEMINI_API_KEY and/or ANTHROPIC_API_KEY, then restart the app.';
-}
-
-/** Gemini first; on any Gemini failure, fall back to Claude. */
-async function translateWithFallback(listing, targets) {
-  const geminiProblem = gemini.geminiSetupProblem();
-  let geminiError = null;
-  if (!geminiProblem) {
-    try {
-      return { engine: 'gemini', translations: await gemini.translateListing(listing, targets) };
-    } catch (err) {
-      geminiError = err.message;
-      console.warn(`[translate] Gemini failed for listing ${listing.listing_id}, using Claude: ${err.message}`);
-    }
-  }
-  if (claude.claudeSetupProblem()) throw new Error(geminiError || geminiProblem);
-  try {
-    return { engine: 'claude', geminiError, translations: await claude.translateListing(listing, targets) };
-  } catch (err) {
-    throw new Error(geminiError ? `Gemini: ${geminiError} | ${err.message}` : err.message);
-  }
-}
-
-/** Step 1: ask Gemini (or Claude as fallback) for translations of the selected listings. Nothing is changed on Etsy yet. */
+/** Step 1: ask Claude for translations of the selected listings. Nothing is changed on Etsy yet. */
 app.post('/api/etsy/translations/generate', (req, res) => {
-  const problem = translateSetupProblem();
+  const problem = claude.claudeSetupProblem();
   if (problem) return res.status(400).json({ error: problem });
 
   const { listingIds = [], languages = [] } = req.body || {};
@@ -231,8 +206,8 @@ app.post('/api/etsy/translations/generate', (req, res) => {
     if (!targets.length) throw new Error('Listing is already in the selected language');
     return {
       listing_id: listing.listing_id,
-      source: { title: gemini.decodeEntities(listing.title), language: listing.language },
-      ...(await translateWithFallback(listing, targets)),
+      source: { title: decodeEntities(listing.title), language: listing.language },
+      translations: await claude.translateListing(listing, targets),
     };
   });
   res.json({ jobId: job.id });
@@ -248,9 +223,9 @@ app.post('/api/etsy/translations/publish', (req, res) => {
     .map((i) => ({
       listing_id: Number(i.listing_id),
       language: String(i.language),
-      title: gemini.cleanTitle(i.title),
+      title: cleanTitle(i.title),
       description: String(i.description || '').trim(),
-      tags: gemini.cleanTags(i.tags),
+      tags: cleanTags(i.tags),
     }))
     .filter((i) => known.has(i.listing_id) && etsy.TRANSLATION_LANGUAGES[i.language] && i.title && i.description);
   if (!items.length) return res.status(400).json({ error: 'Nothing to publish' });

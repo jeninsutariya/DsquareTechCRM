@@ -65,8 +65,6 @@
     .preview-lang textarea { min-height:90px; resize:vertical; }
     .hint { font-size:12px; color:var(--muted); }
     .hint.bad { color:var(--err); }
-    .engine { float:right; font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px; background:#eef3ff; color:#2b4a9b; }
-    .engine.claude { background:#fff6e0; color:#7a5300; cursor:help; }
     ul.errors { margin:8px 0 0; padding-left:18px; color:var(--err); }
   </style>
 </head>
@@ -242,7 +240,7 @@
       const shopLangs = (status.shop.languages || []).map((c) => c.split('-')[0]);
       const remembered = JSON.parse(localStorageGet('langs') || '[]');
       body(`
-        <p style="margin-top:0">Choose the languages. Gemini (or Claude if Gemini fails) will translate the <b>title, description and tags</b>.
+        <p style="margin-top:0">Choose the languages. Claude will translate the <b>title, description and tags</b>.
         You can review and edit everything before anything changes on Etsy.</p>
         <div class="langs">${Object.entries(status.translationLanguages).map(([code, name]) => `
           <label><input type="checkbox" value="${code}" ${remembered.includes(code) ? 'checked' : ''}>
@@ -282,7 +280,7 @@
       localStorageSet('langs', JSON.stringify(languages));
       try {
         const job = await runJob('/api/etsy/translations/generate', { listingIds: [...selected], languages },
-          `Translating ${selected.size} listing(s) into ${languages.length} language(s) with Gemini…`);
+          `Translating ${selected.size} listing(s) into ${languages.length} language(s) with Claude…`);
         drafts = job.results;
         showPreview(job.errors);
       } catch (e) {
@@ -300,16 +298,11 @@
     function showPreview(errors = []) {
       const titleOf = (id) => decode(shown.find((l) => l.listing_id === id)?.title || drafts.find((d) => d.listing_id === id)?.source.title || `#${id}`);
       $('dlg-title').textContent = 'Review translations';
-      const fallbacks = drafts.filter((d) => d.engine === 'claude');
-      const fallbackNote = fallbacks.length && fallbacks.some((d) => d.geminiError)
-        ? `<div class="msg warn">Gemini failed for ${fallbacks.length} listing(s), so Claude translated them instead. Reason: ${esc(fallbacks.find((d) => d.geminiError).geminiError)}</div>`
-        : '';
-      body(errorList(errors, (l) => decode(l.title)) + fallbackNote +
+      body(errorList(errors, (l) => decode(l.title)) +
         (drafts.length ? '<p style="margin-top:0" class="muted">Edit anything you like. Untick a language to skip it. Nothing is saved to Etsy until you click Publish.</p>' : '') +
         drafts.map((d) => `
           <div class="preview-listing">
-            <h3>${esc(titleOf(d.listing_id))}
-              <span class="engine ${d.engine}" title="${esc(d.geminiError ? 'Gemini failed: ' + d.geminiError : '')}">${d.engine === 'gemini' ? 'Gemini' : 'Claude'}</span></h3>
+            <h3>${esc(titleOf(d.listing_id))}</h3>
             ${Object.entries(d.translations).map(([code, t]) => `
               <div class="preview-lang" data-id="${d.listing_id}" data-lang="${code}">
                 <label class="lang-head"><input type="checkbox" class="include" checked> <span class="lang">${code}</span> ${esc(status.translationLanguages[code])}</label>

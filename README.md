@@ -16,20 +16,17 @@ CRM with a one-click Etsy shop connection that automatically imports **all** lis
 Access tokens refresh automatically, so the shop stays connected after restarts.
 Rate limits (429) and 5xx errors are retried with backoff.
 
-### Translate listings with Google Gemini
+### Translate listings with Claude
 
 1. Tick the listings you want (or the header box to select everything shown).
 2. Click **Translate & update selected** and choose languages
    (German, Spanish, French, Italian, Japanese, Dutch, Polish, Portuguese, Russian, Swedish).
-3. Gemini translates the **title, description and tags** of each listing, written for local Etsy search.
+3. Claude translates the **title, description and tags** of each listing, written for local Etsy search.
 4. Review and edit the result. Nothing changes on Etsy yet.
 5. Click **Publish to Etsy**. Each translation is saved to the listing on Etsy.
    The **Translations** column shows which languages each listing has.
 
-**Fallback:** if Gemini fails for a listing (bad key, quota, unknown model, blocked or invalid output),
-that listing is translated with **Claude** (`claude-opus-5-5` by default, set `CLAUDE_MODEL` to change it).
-The review screen marks those listings and shows the Gemini error. With no Gemini key at all,
-Claude is used for everything. Set `ANTHROPIC_API_KEY` in `.env`.
+Translations use **Claude** (`claude-opus-5-5` by default, set `CLAUDE_MODEL` to change it) with `ANTHROPIC_API_KEY` from `.env`.
 
 Output is cleaned to Etsy's rules: title at most 140 characters, at most 13 tags of up to 20 characters each.
 Etsy only shows a translation if that language is enabled in your shop
@@ -45,7 +42,7 @@ Shops connected before this feature need to click **Reconnect shop** once, which
 3. Configure and run:
 
 ```bash
-cp .env.example .env   # fill in ETSY_API_KEY, ETSY_SHARED_SECRET, GEMINI_API_KEY, ANTHROPIC_API_KEY
+cp .env.example .env   # fill in ETSY_API_KEY, ETSY_SHARED_SECRET, ANTHROPIC_API_KEY
 npm install
 npm start              # open http://localhost:3000
 ```
@@ -68,7 +65,7 @@ macOS is TextEdit saving the file as `.env.txt` or `.env.rtf`. Create it from th
 | GET  | `/api/etsy/listings?state=&q=` | Cached listings (filter by state or by title/SKU text) |
 | GET  | `/api/etsy/listings/raw` | Full raw Etsy listing objects |
 | GET  | `/api/etsy/listings/export.csv` | CSV export |
-| POST | `/api/etsy/translations/generate` | `{listingIds, languages}` → Gemini drafts (background job) |
+| POST | `/api/etsy/translations/generate` | `{listingIds, languages}` → Claude drafts (background job) |
 | POST | `/api/etsy/translations/publish` | `{items:[{listing_id, language, title, description, tags}]}` → save to Etsy (background job) |
 | GET  | `/api/jobs/:id` | Job progress, results and per-item errors |
 
