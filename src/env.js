@@ -35,6 +35,13 @@ function etsySetupProblem() {
   if (!key || key === 'your_keystring') {
     return 'ETSY_API_KEY is not set in .env. Paste your Etsy app Keystring after "ETSY_API_KEY=".';
   }
+  if (!/^[a-z0-9]{20,}$/i.test(key.trim())) {
+    return `ETSY_API_KEY "${key}" does not look like an Etsy Keystring (24 letters/numbers). ` +
+      'Copy the KEYSTRING from https://www.etsy.com/developers/your-apps (not the Shared Secret).';
+  }
+  if (key.trim() === process.env.ETSY_SHARED_SECRET?.trim()) {
+    return 'ETSY_API_KEY and ETSY_SHARED_SECRET are the same. ETSY_API_KEY must be the Keystring.';
+  }
   if (process.env.ETSY_SHARED_SECRET === 'your_shared_secret') {
     return 'ETSY_SHARED_SECRET still has the example value in .env. Paste your Etsy app Shared Secret.';
   }

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'parallel-test-'));
-process.env.ETSY_API_KEY = 'key123';
+process.env.ETSY_API_KEY = 'testkeystring0123456789ab';
 process.env.ETSY_REDIRECT_URI = 'http://localhost/auth/etsy/callback';
 process.env.GEMINI_API_KEY_1 = 'k1';
 process.env.GEMINI_API_KEY_2 = 'k2';

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'etsy-test-'));
-process.env.ETSY_API_KEY = 'key123';
+process.env.ETSY_API_KEY = 'testkeystring0123456789ab';
 process.env.ETSY_SHARED_SECRET = 'secret';
 process.env.ETSY_REDIRECT_URI = 'http://localhost/auth/etsy/callback';
 process.env.GEMINI_API_KEY_1 = 'gem-key';
@@ -65,7 +65,7 @@ global.fetch = async (input, init = {}) => {
     assert.ok(body.get('code_verifier'));
     return json({ access_token: '42.tok', refresh_token: '42.ref', expires_in: 3600 });
   }
-  assert.equal(init.headers['x-api-key'], 'key123:secret');
+  assert.equal(init.headers['x-api-key'], 'testkeystring0123456789ab:secret');
   assert.equal(init.headers.Authorization, 'Bearer 42.tok');
   const tr = url.pathname.match(/^\/v3\/application\/shops\/7\/listings\/(\d+)\/translations\/(\w+)$/);
   if (tr) {
