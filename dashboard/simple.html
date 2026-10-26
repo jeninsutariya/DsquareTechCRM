@@ -107,8 +107,8 @@ th.right, td.right { text-align: right; }
 @media (max-width: 420px) { .result-grid { grid-template-columns: minmax(0, 1fr); } }
 .mkt { display: grid; gap: 16px; }
 .mkt > h2 { font-size: clamp(17px, 1.5vw, 22px); }
-.mkt-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
-@media (max-width: 1200px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 16px; align-items: start; }
+@media (max-width: 1300px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
 .mkt-summary { border-top: 1px solid var(--line); }
 .mkt-summary .result-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .mkt-summary .result { align-content: start; }
@@ -531,7 +531,7 @@ th.right, td.right { text-align: right; }
   // Done adds the app as a row with its total. Rows are remembered in this browser.
   const DEPTS = [
     { name: 'Company', people: ['Jenin', 'Meet', 'Keyur', 'Company'] },
-    { name: 'Personal', people: ['Jenin', 'Meet'] },
+    { name: 'Personal', people: ['Jenin', 'Meet', 'Other'] },
   ];
   const MKT_KEY = 'appRevenue.marketing';
   let mkt = {};
