@@ -349,12 +349,16 @@ th.right, td.right { text-align: right; }
     const rowInr = [], rowNet = [];
     document.querySelectorAll('#rows tr[data-app]').forEach((tr) => {
       const usd = valueFor(tr.dataset.app);
+      // No 10% deduction when you edited this app's Total revenue, or the app is set to Other:
+      // INR = Total revenue × USD Rate. Otherwise INR = After 10% deduction × USD Rate.
       const isOther = tr.querySelector('select[data-app]').value === 'Other';
-      const inrValue = isOther ? inrAmountFull(usd, rate) : inrAmount(usd, rate);
+      const isEdited = Number.isFinite(edits[tr.dataset.app]);
+      const inrValue = isOther || isEdited ? inrAmountFull(usd, rate) : inrAmount(usd, rate);
       const shares = amounts.map((amount) => share(usd, total, amount));
       const inrCell = tr.querySelector('td.inr-cell');
       inrCell.textContent = inrOrDash(inrValue);
-      inrCell.title = isOther ? 'Other app: Total revenue × USD Rate (no 10% deduction)' : 'After 10% deduction × USD Rate';
+      inrCell.title = isEdited ? 'Edited Total revenue × USD Rate (no 10% deduction)'
+        : isOther ? 'Other app: Total revenue × USD Rate (no 10% deduction)' : 'After 10% deduction × USD Rate';
       SPLITS.forEach((sp, i) => { tr.querySelector(`td.${sp.cell}`).textContent = inrOrDash(shares[i]); });
       const appNet = netInr(inrValue, shares);
       if (inrValue !== null) { rowInr.push(inrValue); rowNet.push(appNet); }
